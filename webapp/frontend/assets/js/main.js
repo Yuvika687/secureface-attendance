@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { initOverviewPage } from "./page-overview.js";
 import { initLivePage } from "./page-live.js";
 import { initResultsPage } from "./page-results.js";
 import { initRobustnessPage } from "./page-robustness.js";
@@ -41,6 +42,7 @@ loadHeader();
 
 // ---- tab navigation ----
 const pageInit = {
+  overview: { fn: initOverviewPage, done: false },
   live: { fn: initLivePage, done: false },
   results: { fn: initResultsPage, done: false },
   robustness: { fn: initRobustnessPage, done: false },
@@ -63,5 +65,5 @@ document.getElementById("tabs").addEventListener("click", (e) => {
   activateTab(btn.dataset.view);
 });
 
-// Live page renders first (it's the landing page).
-activateTab("live");
+// Overview renders first (it's the landing page).
+activateTab("overview");

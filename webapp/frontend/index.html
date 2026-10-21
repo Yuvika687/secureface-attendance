@@ -19,7 +19,8 @@
       <div class="model-pill" id="model-pill">loading model info&hellip;</div>
       <div class="conn-status"><span class="conn-dot" id="conn-dot"></span><span id="conn-text">connecting&hellip;</span></div>
       <nav class="tabs" id="tabs">
-        <button class="tab-btn active" data-view="live">Live</button>
+        <button class="tab-btn active" data-view="overview">Overview</button>
+        <button class="tab-btn" data-view="live">Live</button>
         <button class="tab-btn" data-view="results">Results</button>
         <button class="tab-btn" data-view="robustness">Robustness</button>
         <button class="tab-btn" data-view="models">Models</button>
@@ -28,7 +29,8 @@
   </header>
 
   <main class="container">
-    <section class="view active" id="view-live"></section>
+    <section class="view active" id="view-overview"></section>
+    <section class="view" id="view-live"></section>
     <section class="view" id="view-results"></section>
     <section class="view" id="view-robustness"></section>
     <section class="view" id="view-models"></section>
