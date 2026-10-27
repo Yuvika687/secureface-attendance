@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- One row per LIVENESS DECISION CHANGE (LIVE/SPOOF/UNCERTAIN), not per
+-- frame -- app.py only inserts when the decision differs from the last one
+-- logged for that session.
+CREATE TABLE IF NOT EXISTS liveness_events (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN')),
+    p_spoof REAL NOT NULL,
+    user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Performance indexes for 500+ employee scale
 -- The attendance lookup (user_id + date) is the most frequent query in the system
 CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
@@ -37,3 +49,4 @@ CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
+CREATE INDEX IF NOT EXISTS idx_liveness_events_created ON liveness_events(created_at);

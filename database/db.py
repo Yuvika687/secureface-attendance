@@ -174,12 +174,25 @@ def _init_sqlite():
         value TEXT NOT NULL
     );
 
+    -- One row per LIVENESS DECISION CHANGE (LIVE/SPOOF/UNCERTAIN), not per
+    -- frame -- app.py only inserts when the decision differs from the last
+    -- one logged for that session.
+    CREATE TABLE IF NOT EXISTS liveness_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN')),
+        p_spoof REAL NOT NULL,
+        user_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Performance indexes for 500+ employee scale
     CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
+    CREATE INDEX IF NOT EXISTS idx_liveness_events_created ON liveness_events(created_at);
     """
 
     os.makedirs(os.path.dirname(Config.DATABASE_URI), exist_ok=True)
@@ -205,58 +218,80 @@ def _init_postgres():
     conn.close()
 
 
+_DEFAULT_SETTINGS = {
+    'late_cutoff_hour': '9',
+    'late_cutoff_minute': '0',
+    'company_name': 'Sofzenix Technologies',
+    'face_tolerance': '0.45',
+    'min_face_samples': '5',
+    'liveness_threshold': '0.5',
+    'email_enabled': '0',
+    'email_trigger_hour': '18',
+    'email_trigger_minute': '0',
+    'hr_email': '',
+}
+
+
+def _admin_from_env():
+    """Reads ADMIN_EMAIL/ADMIN_NAME/ADMIN_PASSWORD from the environment for
+    first-run admin creation. No default password is ever hardcoded here --
+    if these aren't set, no admin is auto-created (see scripts/create_admin.py
+    for interactive creation instead)."""
+    email = os.environ.get("ADMIN_EMAIL")
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not email or not password:
+        return None
+    return {
+        "email": email.strip().lower(),
+        "password": password,
+        "name": os.environ.get("ADMIN_NAME", "Admin"),
+    }
+
+
 def _insert_defaults(conn):
-    """Insert default admin and settings for SQLite."""
+    """Insert settings defaults, and an admin ONLY if ADMIN_EMAIL /
+    ADMIN_PASSWORD are set in the environment (SQLite)."""
     from werkzeug.security import generate_password_hash
 
     cur = conn.cursor()
     cur.execute("SELECT id FROM users WHERE role = 'admin'")
     if not cur.fetchone():
-        default_admin_pw = generate_password_hash("Admin@123")
-        cur.execute('''
-            INSERT INTO users (employee_id, name, email, phone, department, password_hash, role, face_registered)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', ('ADMIN001', 'Super Admin', 'admin@sofzenix.com', '0000000000', 'Management', default_admin_pw, 'admin', 0))
+        admin = _admin_from_env()
+        if admin:
+            cur.execute('''
+                INSERT INTO users (employee_id, name, email, phone, department, password_hash, role, face_registered)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', ('ADMIN001', admin["name"], admin["email"], '0000000000', 'Management',
+                  generate_password_hash(admin["password"]), 'admin', 0))
+            print(f"[Setup] Admin account created from ADMIN_EMAIL/ADMIN_PASSWORD env vars: {admin['email']}")
+        else:
+            print("[Setup] No admin account exists and ADMIN_EMAIL/ADMIN_PASSWORD are not set. "
+                  "Run `python scripts/create_admin.py` to create one.")
 
-    defaults = {
-        'late_cutoff_hour': '9',
-        'late_cutoff_minute': '0',
-        'company_name': 'Sofzenix Technologies',
-        'face_tolerance': '0.45',
-        'min_face_samples': '5',
-        'email_enabled': '0',
-        'email_trigger_hour': '18',
-        'email_trigger_minute': '0',
-        'hr_email': '',
-    }
-    for key, value in defaults.items():
+    for key, value in _DEFAULT_SETTINGS.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
 
 
 def _insert_defaults_pg(conn):
-    """Insert default admin and settings for PostgreSQL."""
+    """Insert settings defaults, and an admin ONLY if ADMIN_EMAIL /
+    ADMIN_PASSWORD are set in the environment (PostgreSQL)."""
     from werkzeug.security import generate_password_hash
 
     result = conn.execute("SELECT id FROM users WHERE role = 'admin'").fetchone()
     if not result:
-        default_admin_pw = generate_password_hash("Admin@123")
-        conn.execute('''
-            INSERT INTO users (employee_id, name, email, phone, department, password_hash, role, face_registered)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', ('ADMIN001', 'Super Admin', 'admin@sofzenix.com', '0000000000', 'Management', default_admin_pw, 'admin', 0))
+        admin = _admin_from_env()
+        if admin:
+            conn.execute('''
+                INSERT INTO users (employee_id, name, email, phone, department, password_hash, role, face_registered)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', ('ADMIN001', admin["name"], admin["email"], '0000000000', 'Management',
+                  generate_password_hash(admin["password"]), 'admin', 0))
+            print(f"[Setup] Admin account created from ADMIN_EMAIL/ADMIN_PASSWORD env vars: {admin['email']}")
+        else:
+            print("[Setup] No admin account exists and ADMIN_EMAIL/ADMIN_PASSWORD are not set. "
+                  "Run `python scripts/create_admin.py` to create one.")
 
-    defaults = {
-        'late_cutoff_hour': '9',
-        'late_cutoff_minute': '0',
-        'company_name': 'Sofzenix Technologies',
-        'face_tolerance': '0.45',
-        'min_face_samples': '5',
-        'email_enabled': '0',
-        'email_trigger_hour': '18',
-        'email_trigger_minute': '0',
-        'hr_email': '',
-    }
-    for key, value in defaults.items():
+    for key, value in _DEFAULT_SETTINGS.items():
         conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING", (key, value))
 
 

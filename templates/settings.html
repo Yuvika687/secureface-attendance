@@ -5,6 +5,7 @@
 
 {% block content %}
 <form method="POST" action="{{ url_for('settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="settings-grid">
         <!-- Attendance Rules -->
         <div class="settings-section">
@@ -45,10 +46,26 @@
                 <input type="number" name="face_tolerance" class="setting-input" value="{{ settings.face_tolerance }}" min="0.3" max="0.6" step="0.05">
             </div>
 
+            <div class="setting-row">
+                <div class="setting-label">
+                    Minimum Enrollment Samples
+                    <small>Face scans required before recognition is enabled for a person</small>
+                </div>
+                <input type="number" name="min_face_samples" class="setting-input" value="{{ settings.min_face_samples }}" min="1" max="15" step="1">
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-label">
+                    Liveness Decision Threshold
+                    <small>P(spoof) above this (outside the gray zone) is rejected as SPOOF</small>
+                </div>
+                <input type="number" name="liveness_threshold" class="setting-input" value="{{ settings.liveness_threshold }}" min="0.1" max="0.9" step="0.05">
+            </div>
+
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.12); border-radius:10px;">
                 <div style="font-size:0.78rem; color:var(--accent-cyan); font-weight:600;">
-                    <i class="fa-solid fa-shield-halved"></i> 8-Layer Anti-Spoofing Active<br>
-                    <span style="margin-left:1.3rem; font-weight:500; color:var(--text-muted);">Moiré • Glare • Color Temp • Texture • Edge • Frequency • Depth • Eye Detection</span>
+                    <i class="fa-solid fa-shield-halved"></i> Liveness check: trained MobileNetV3-Small classifier<br>
+                    <span style="margin-left:1.3rem; font-weight:500; color:var(--text-muted);">Plus a randomized blink / head-turn challenge after recognition</span>
                 </div>
             </div>
         </div>
@@ -60,7 +77,7 @@
             <div class="setting-row">
                 <div class="setting-label">
                     Auto Absentee Emails
-                    <small>Send notifications to absent employees</small>
+                    <small>Send notifications to absent students</small>
                 </div>
                 <div style="display:flex; align-items:center; gap:0.65rem;">
                     <label style="position:relative; display:inline-block; width:44px; height:24px;">

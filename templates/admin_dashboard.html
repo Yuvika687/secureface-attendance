@@ -9,7 +9,7 @@
     <div class="stat-card stat-card-emerald">
         <div class="stat-icon-wrap"><i class="fa-solid fa-users"></i></div>
         <div class="stat-content">
-            <div class="stat-label">Total Employees</div>
+            <div class="stat-label">Total Students</div>
             <div class="stat-number">{{ total_emp }}</div>
         </div>
         <div class="stat-badge neutral">Active</div>
@@ -72,7 +72,7 @@
             </button>
             <a href="{{ url_for('manage_employees') }}" class="action-btn" style="--btn-color:#06b6d4; text-decoration:none;">
                 <i class="fa-solid fa-user-plus"></i>
-                <span>Add Employee</span>
+                <span>Add Student</span>
             </a>
             <a href="{{ url_for('export_csv') }}" class="action-btn" style="--btn-color:#8b5cf6; text-decoration:none;">
                 <i class="fa-solid fa-file-csv"></i>
@@ -111,7 +111,7 @@
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>Employee</th><th>ID</th><th>Department</th><th>Time</th><th>Status</th></tr>
+                    <tr><th>Student</th><th>ID</th><th>Department</th><th>Time</th><th>Status</th></tr>
                 </thead>
                 <tbody>
                     {% for rec in recent_attendance %}
@@ -143,7 +143,7 @@
         <div style="text-align:center; padding:2.5rem; color:var(--text-muted);">
             <i class="fa-solid fa-inbox" style="font-size:1.8rem; opacity:0.3; margin-bottom:0.5rem; display:block;"></i>
             <div style="font-size:0.85rem; font-weight:600;">No attendance records yet today</div>
-            <div style="font-size:0.72rem; margin-top:0.2rem;">Employees will appear here as they check in</div>
+            <div style="font-size:0.72rem; margin-top:0.2rem;">Students will appear here as they check in</div>
         </div>
         {% endif %}
     </div>
@@ -159,7 +159,7 @@
         <div class="glass-card-body">
             <form id="manualForm" style="display:flex; flex-direction:column; gap:0.75rem;">
                 <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Employee</label>
+                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Student</label>
                     <select id="manualEmpId" class="form-control" style="width:100%; appearance:none;">
                         {% for emp in employees_list %}
                         <option value="{{ emp.id }}" style="background:#0d1117;">{{ emp.name }} ({{ emp.employee_id }})</option>

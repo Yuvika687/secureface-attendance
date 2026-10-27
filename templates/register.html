@@ -11,11 +11,12 @@
 </div>
 
 <form method="POST" id="registerForm" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-        <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.3rem;">Employee ID</label>
+        <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.3rem;">Student ID</label>
         <div style="position:relative;">
             <i class="fa-solid fa-id-badge" style="position:absolute; left:0.8rem; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:0.8rem;"></i>
-            <input type="text" name="employee_id" id="empId" class="form-control" style="padding-left:2.2rem; padding:0.65rem 0.8rem 0.65rem 2.2rem; text-transform:uppercase;" required placeholder="EMP001" maxlength="15" autocomplete="off">
+            <input type="text" name="employee_id" id="empId" class="form-control" style="padding-left:2.2rem; padding:0.65rem 0.8rem 0.65rem 2.2rem; text-transform:uppercase;" required placeholder="STU001" maxlength="15" autocomplete="off">
         </div>
         <div class="field-error" id="empIdErr"></div>
     </div>

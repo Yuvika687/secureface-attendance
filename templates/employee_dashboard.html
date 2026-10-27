@@ -210,7 +210,7 @@
             </div>
 
             <!-- Sample counter -->
-            <div id="sampleCounter" style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); backdrop-filter:blur(10px); padding:4px 12px; border-radius:20px; font-size:0.72rem; font-weight:600; color:var(--accent-cyan); z-index:15;">Sample 0/5</div>
+            <div id="sampleCounter" style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); backdrop-filter:blur(10px); padding:4px 12px; border-radius:20px; font-size:0.72rem; font-weight:600; color:var(--accent-cyan); z-index:15;">Sample 0/{{ min_face_samples }}</div>
         </div>
 
         <p id="regInstruction" style="color:var(--accent-cyan); font-weight:600; font-size:0.82rem; margin-top:1rem; display:flex; align-items:center; justify-content:center; gap:0.5rem;">
@@ -295,7 +295,7 @@
     let streamActive = false;
     let autoCaptureInterval = null;
     let sampleCount = 0;
-    const MAX_SAMPLES = 5;
+    const MAX_SAMPLES = {{ min_face_samples }};  // real admin-configured setting, not hardcoded
     
     function closeModal() {
         document.getElementById('faceModal').style.display = 'none';

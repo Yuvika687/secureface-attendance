@@ -1,16 +1,17 @@
 {% extends 'base.html' %}
-{% block title %}Employee Login - Smart Attendance AI{% endblock %}
+{% block title %}Student Login - Smart Attendance AI{% endblock %}
 
 {% block auth_content %}
 <div style="text-align:center; margin-bottom:2rem;">
     <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:14px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.12); margin-bottom:1.25rem;">
         <i class="fa-regular fa-user" style="font-size:1.5rem; color:var(--accent-emerald);"></i>
     </div>
-    <h1 style="font-size:1.6rem; font-weight:800; color:var(--text-primary); margin-bottom:0.3rem;">Employee Portal</h1>
+    <h1 style="font-size:1.6rem; font-weight:800; color:var(--text-primary); margin-bottom:0.3rem;">Student Portal</h1>
     <p style="color:var(--text-muted); font-size:0.82rem;">Verify your credentials to access the system.</p>
 </div>
 
 <form method="POST" id="loginForm" style="display:flex; flex-direction:column; gap:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
         <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.4rem;">Work Email</label>
         <div style="position:relative;">

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Scanner | Face ID</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -136,9 +137,14 @@
             border-color: #34d399; box-shadow: 0 0 30px var(--success-glow);
             transform: scale(1.05); border-radius: 18px;
         }
-        .target-container.alert .bracket { 
+        .target-container.alert .bracket {
             border-color: #f87171; box-shadow: 0 0 30px var(--danger-glow);
             transform: scale(0.95);
+        }
+        /* UNCERTAIN: distinct from success (green), alert (red), and "no
+           face" -- a reject+retry state, not a hard failure. */
+        .target-container.uncertain .bracket {
+            border-color: #38bdf8; box-shadow: 0 0 30px var(--primary-glow);
         }
 
         /* Status Panel */
@@ -160,6 +166,7 @@
 
         .status-panel.success { border-color: #34d399; background: rgba(6, 78, 59, 0.6); }
         .status-panel.error { border-color: #f87171; background: rgba(127, 29, 29, 0.6); animation: shake 0.5s; }
+        .status-panel.uncertain { border-color: #38bdf8; background: rgba(12, 74, 110, 0.5); }
 
         .status-title { font-size: 1.45rem; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.3px; }
         .status-desc { font-size: 0.88rem; color: #94a3b8; font-weight: 400; }
@@ -254,7 +261,7 @@
         </div>
         <div class="nav-btns">
             <a href="{{ url_for('login') }}" class="auth-btn">
-                <i class="fa-solid fa-user"></i> Employee Login
+                <i class="fa-solid fa-user"></i> Student Login
             </a>
             <a href="{{ url_for('admin_login') }}" class="auth-btn" style="border-color:rgba(139,92,246,0.2);">
                 <i class="fa-solid fa-shield-halved" style="color:#8b5cf6;"></i> Admin
@@ -304,6 +311,7 @@
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
     <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
     <script>
     document.addEventListener("DOMContentLoaded", () => {
@@ -338,35 +346,38 @@
         });
 
         function updateDebug(res) {
+            // NOTE: res.anti_spoof_score / res.spoof_checks no longer exist --
+            // the rule-based anti-spoofing engine was deleted. The trained
+            // MobileNetV3-Small model now reports res.p_spoof (0-1,
+            // P(spoof)) and res.state (NO_FACE / MULTI_FACE / SPOOF /
+            // UNCERTAIN / LIVE). This is a data-wiring fix only -- the full
+            // visual redesign of this page is a separate pass.
             const lm = res.liveness_metrics || {};
+            const livenessScore = res.p_spoof !== undefined ? Math.round((1 - res.p_spoof) * 100) : 0;
             document.getElementById('dbgConf').textContent = (res.confidence || 0) + '%';
-            document.getElementById('dbgSpoof').textContent = res.anti_spoof_score || 0;
+            document.getElementById('dbgSpoof').textContent = res.p_spoof !== undefined ? livenessScore : '—';
             document.getElementById('dbgEar').textContent = lm.ear !== undefined ? lm.ear.toFixed(3) : '—';
             document.getElementById('dbgEyes').textContent = lm.eyes_closed !== undefined ? (lm.eyes_closed ? 'CLOSED' : 'OPEN') : '—';
-            document.getElementById('dbgDist').textContent = lm.depth_score !== undefined ? lm.depth_score : '—';
-            document.getElementById('dbgState').textContent = 
-                res.error ? 'ERROR' :
-                res.spoofing_detected ? 'SPOOF' :
-                res.recognized ? 'MATCHED' : 
-                res.face_found ? 'UNKNOWN' : 'NO FACE';
-            
+            document.getElementById('dbgDist').textContent = res.timings && res.timings.total_ms !== undefined ? res.timings.total_ms + 'ms' : '—';
+            document.getElementById('dbgState').textContent = res.error ? 'ERROR' : (res.state || '—');
+
             // Color coding
             const confEl = document.getElementById('dbgConf');
             confEl.className = (res.confidence || 0) > 50 ? 'val' : (res.confidence || 0) > 20 ? 'warn' : 'fail';
             const spoofEl = document.getElementById('dbgSpoof');
-            spoofEl.className = (res.anti_spoof_score || 0) > 45 ? 'val' : (res.anti_spoof_score || 0) > 25 ? 'warn' : 'fail';
+            spoofEl.className = livenessScore > 70 ? 'val' : livenessScore > 40 ? 'warn' : 'fail';
         }
 
-        function updateMeters(conf, spoof) {
+        function updateMeters(conf, livenessScore) {
             meterRow.style.display = 'flex';
             confFill.style.width = conf + '%';
             confVal.innerText = conf + '%';
             confFill.className = 'meter-fill ' + (conf > 60 ? 'green' : conf > 30 ? 'yellow' : 'red');
-            
-            spoofFill.style.width = spoof + '%';
-            spoofVal.innerText = spoof;
-            spoofFill.className = 'meter-fill ' + (spoof > 45 ? 'green' : spoof > 25 ? 'yellow' : 'red');
-            
+
+            spoofFill.style.width = livenessScore + '%';
+            spoofVal.innerText = livenessScore;
+            spoofFill.className = 'meter-fill ' + (livenessScore > 70 ? 'green' : livenessScore > 40 ? 'yellow' : 'red');
+
             blinkCounter.innerText = blinkDetected ? "✓ LIVE" : "LIVE";
             blinkCounter.style.color = blinkDetected ? '#10b981' : '#f59e0b';
         }
@@ -374,7 +385,7 @@
         function setCamStatus(title, desc, state) {
             sTitle.innerHTML = title;
             sDesc.innerHTML = desc;
-            
+
             targetBox.className = "target-container";
             statusPanel.className = "status-panel";
 
@@ -386,6 +397,12 @@
             } else if (state === 'success') {
                 targetBox.classList.add("success");
                 statusPanel.classList.add("success");
+            } else if (state === 'uncertain') {
+                // Distinct color from both success (green) and alert (red) --
+                // and from "no face" (not styled as alert either). Treated as
+                // reject + log + retry, not a hard failure.
+                targetBox.classList.add("uncertain");
+                statusPanel.classList.add("uncertain");
             } else if (state === 'alert' || state === 'unregistered') {
                 targetBox.classList.add("alert");
                 statusPanel.classList.add("error");
@@ -429,8 +446,9 @@
                     
                     updateDebug(res);
 
-                    if (res.confidence !== undefined || res.anti_spoof_score !== undefined) {
-                        updateMeters(res.confidence || 0, res.anti_spoof_score || 0);
+                    if (res.confidence !== undefined || res.p_spoof !== undefined) {
+                        const livenessScore = res.p_spoof !== undefined ? Math.round((1 - res.p_spoof) * 100) : 0;
+                        updateMeters(res.confidence || 0, livenessScore);
                     }
 
                     // Handle API error
@@ -446,6 +464,13 @@
                         lastRecognizedUser = null;
                     } else if(res.spoofing_detected) {
                         setCamStatus("⚠️ Spoof Detected", res.msg || "Live presence required.", "alert");
+                        eyeWasClosed = false; blinkDetected = false;
+                        consecutiveRecognitions = 0;
+                        lastRecognizedUser = null;
+                    } else if(res.state === "UNCERTAIN") {
+                        // Reject + log + retry, not a hard failure -- its own
+                        // distinct color (blue), never styled as "alert".
+                        setCamStatus("Hold still — checking again", res.msg || "Re-checking liveness...", "uncertain");
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;

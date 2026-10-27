@@ -1,14 +1,17 @@
 """
-SmartFace Recognition Engine v3.0
-==================================
-Production-grade face recognition powered by:
-  - ArcFace ResNet50 (w600k_r50) via ONNX Runtime — 99.8% LFW accuracy
-  - MediaPipe Face Mesh 478-point landmarks — liveness & alignment
+SmartFace Recognition Engine
+=============================
+Face recognition powered by:
+  - ArcFace ResNet50 (w600k_r50) via ONNX Runtime
+  - MediaPipe Face Mesh 478-point landmarks — alignment + blink/head-turn
+    challenge metrics (EAR, head yaw)
   - Vectorized cosine similarity with in-memory cache
-  - Multi-layer anti-spoofing (3D depth + texture + mandatory blink)
 
-No C compiler required — pure Python + ONNX.
-Designed for local deployment via Cloudflare Tunnel.
+Passive spoof detection (screen/texture/depth heuristics) used to live in
+this file; it has been removed and replaced by a trained MobileNetV3-Small
+classifier that runs as a separate, earlier stage in app.py's
+/api/recognize_face (see liveness/predictor.py) -- this module only runs
+after that model has already classified the frame as LIVE.
 """
 
 import cv2
@@ -21,11 +24,42 @@ import traceback
 import urllib.request
 import zipfile
 
-import mediapipe as mp
 import onnxruntime as ort
+from mediapipe import Image, ImageFormat
+from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python.vision import (
+    FaceLandmarker as _MPFaceLandmarker,
+    FaceLandmarkerOptions,
+    RunningMode,
+)
+from cryptography.fernet import Fernet, InvalidToken
 
 from config import Config
 from database.db import get_db_connection
+
+# Face embeddings are encrypted at rest with Config.FACE_ENCRYPTION_KEY (the
+# key was already being generated/persisted -- it just wasn't being used to
+# encrypt anything). See _encrypt_embeddings/_decrypt_embeddings below.
+_fernet = Fernet(Config.FACE_ENCRYPTION_KEY)
+
+
+def _encrypt_embeddings(embeddings_list):
+    """Serializes a list of embedding lists to encrypted bytes (stored as a
+    string in the face_embedding TEXT column)."""
+    plaintext = json.dumps(embeddings_list).encode("utf-8")
+    return _fernet.encrypt(plaintext).decode("utf-8")
+
+
+def _decrypt_embeddings(raw):
+    """Decrypts a face_embedding column value back to a list of embedding
+    lists. Falls back to parsing as legacy plaintext JSON for any row
+    written before encryption was added, so existing enrollments aren't
+    silently lost by this change."""
+    try:
+        plaintext = _fernet.decrypt(raw.encode("utf-8"))
+        return json.loads(plaintext)
+    except (InvalidToken, ValueError):
+        return json.loads(raw)
 
 # ============================================================
 #  PATHS & CONSTANTS
@@ -121,15 +155,66 @@ def _download_arcface_model():
 
 print("[SmartFace] Initializing recognition engine...")
 
-# --- MediaPipe Face Mesh (478 landmarks + iris tracking) ---
-_mp_face_mesh = mp.solutions.face_mesh
-_face_mesh = _mp_face_mesh.FaceMesh(
-    max_num_faces=2,       # detect up to 2 to catch multi-face
-    refine_landmarks=True, # enable iris landmarks (478 total)
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+# --- MediaPipe FaceLandmarker (Tasks API) ---
+# The legacy mp.solutions.face_mesh.FaceMesh API used here previously was
+# REMOVED in mediapipe>=0.10.30 (confirmed: raises
+# "AttributeError: module 'mediapipe' has no attribute 'solutions'" at
+# import time). mediapipe is pinned to exactly 0.10.30 in this project
+# because newer versions crash on Apple M-series + Metal 4 -- the same
+# constraint anti_spoof_attendance already hit and solved by switching to
+# the modern mediapipe.tasks.python.vision.FaceLandmarker Task (see that
+# project's src/face_utils.py and src/synthetic_mask.py). Same fix applied
+# here. FaceLandmarkerOptions has no min_tracking_confidence (that was a
+# video-mode-only legacy param); IMAGE running mode re-detects every call,
+# matching how this module is actually used (one frame per request, no
+# cross-frame tracking state).
+_FACE_LANDMARKER_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+    "face_landmarker/float16/1/face_landmarker.task"
 )
-print("[SmartFace] ✅ MediaPipe Face Mesh ready (478 landmarks + iris)")
+_FACE_LANDMARKER_MODEL_PATH = os.path.join(os.path.join(Config.BASE_DIR, 'models'), 'face_landmarker.task')
+
+
+def _ensure_face_landmarker_downloaded():
+    os.makedirs(os.path.dirname(_FACE_LANDMARKER_MODEL_PATH), exist_ok=True)
+    if not os.path.exists(_FACE_LANDMARKER_MODEL_PATH):
+        print(f"[SmartFace] Downloading MediaPipe FaceLandmarker model to {_FACE_LANDMARKER_MODEL_PATH} ...")
+        urllib.request.urlretrieve(_FACE_LANDMARKER_MODEL_URL, _FACE_LANDMARKER_MODEL_PATH)
+        print("[SmartFace] Download complete.")
+    return _FACE_LANDMARKER_MODEL_PATH
+
+
+_face_landmarker = _MPFaceLandmarker.create_from_options(FaceLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=_ensure_face_landmarker_downloaded()),
+    running_mode=RunningMode.IMAGE,
+    num_faces=2,                       # detect up to 2 to catch multi-face
+    min_face_detection_confidence=0.5,
+))
+
+
+class _MeshResult:
+    """Adapter so the rest of this file (written against the old
+    mp.solutions.face_mesh result shape) doesn't need to change: wraps the
+    Tasks API's `.face_landmarks` (list of lists of landmarks with
+    .x/.y/.z, same shape as the old API's per-face `.landmark`) as
+    `.multi_face_landmarks[i].landmark`."""
+    class _Face:
+        def __init__(self, landmarks):
+            self.landmark = landmarks
+
+    def __init__(self, face_landmarks_list):
+        self.multi_face_landmarks = [self._Face(lms) for lms in face_landmarks_list] if face_landmarks_list else []
+
+
+def _run_face_mesh(img_rgb):
+    """Runs the FaceLandmarker and returns an object shaped like the old
+    mp.solutions.face_mesh FaceMesh.process() result."""
+    mp_image = Image(image_format=ImageFormat.SRGB, data=img_rgb)
+    result = _face_landmarker.detect(mp_image)
+    return _MeshResult(result.face_landmarks)
+
+
+print("[SmartFace] ✅ MediaPipe FaceLandmarker ready (478 landmarks + iris, Tasks API)")
 
 # --- ArcFace ONNX Recognition Model ---
 _arcface_session = None
@@ -184,7 +269,7 @@ def _ensure_cache():
         raw = user['face_embedding']
         if raw:
             try:
-                embs = json.loads(raw)
+                embs = _decrypt_embeddings(raw)
                 if embs:
                     cache[user['id']] = np.array(embs, dtype=np.float32)
                     total_embs += len(embs)
@@ -273,17 +358,6 @@ def _get_embedding(aligned_face):
     return embedding
 
 
-def _get_face_bbox(landmarks, w, h):
-    """Compute face bounding box from MediaPipe landmarks."""
-    xs = [lm.x * w for lm in landmarks]
-    ys = [lm.y * h for lm in landmarks]
-    x1, y1 = int(min(xs)), int(min(ys))
-    x2, y2 = int(max(xs)), int(max(ys))
-    pad_x = int((x2 - x1) * 0.1)
-    pad_y = int((y2 - y1) * 0.1)
-    return max(0, x1 - pad_x), max(0, y1 - pad_y), min(w, x2 + pad_x), min(h, y2 + pad_y)
-
-
 # ============================================================
 #  LIVENESS DETECTION (MediaPipe Face Mesh)
 # ============================================================
@@ -310,30 +384,6 @@ def calculate_ear(landmarks, w, h):
     return (_eye_ear(LEFT_EYE) + _eye_ear(RIGHT_EYE)) / 2.0
 
 
-def analyze_3d_depth(landmarks):
-    """
-    3D depth analysis for anti-spoofing.
-    Real faces have natural z-depth variation (nose protrudes, eyes recessed).
-    Flat screens/photos have near-zero z-variation.
-    Returns 0–100 (100 = very 3D/real).
-    """
-    key_indices = [
-        1, 4, 5, 6,        # Nose ridge
-        33, 133, 362, 263,  # Eye corners
-        61, 291,            # Mouth corners
-        10, 152,            # Top/bottom of face
-        234, 454,           # Ears/sides
-        67, 109, 297, 338,  # Forehead
-        199, 175            # Chin area
-    ]
-    z_values = [landmarks[i].z for i in key_indices if i < len(landmarks)]
-    if len(z_values) < 5:
-        return 50
-    z_arr = np.array(z_values)
-    z_std = float(np.std(z_arr))
-    return min(100, int((z_std / 0.025) * 100))
-
-
 def estimate_head_pose(landmarks, w, h):
     """Estimate head yaw from face landmarks."""
     nose = _lm_point(landmarks[1], w, h)
@@ -346,12 +396,14 @@ def estimate_head_pose(landmarks, w, h):
 
 def compute_liveness_metrics(img_bgr, mesh_results):
     """
-    Compute full liveness metrics from existing Face Mesh results.
-    Returns dict with EAR, head pose, depth, eyes_closed flag.
+    Compute the active-liveness-challenge metrics (blink EAR, head yaw) from
+    existing Face Mesh results. No passive spoof scoring here anymore -- that
+    is now the trained MobileNetV3-Small model's job (see app.py), not this
+    function's. This only feeds the blink/head-turn challenge.
     """
     metrics = {
         "eyes_closed": False, "ear": 0.0,
-        "head_yaw": 0.0, "depth_score": 0,
+        "head_yaw": 0.0,
         "face_mesh_detected": False,
     }
     if not mesh_results or not mesh_results.multi_face_landmarks:
@@ -365,136 +417,8 @@ def compute_liveness_metrics(img_bgr, mesh_results):
     metrics["ear"] = round(float(ear), 4)
     metrics["eyes_closed"] = bool(ear < 0.21)
     metrics["head_yaw"] = round(float(estimate_head_pose(lms, w, h)), 3)
-    metrics["depth_score"] = int(analyze_3d_depth(lms))
 
     return metrics
-
-
-# ============================================================
-#  ANTI-SPOOFING ENGINE (Screen Detection + Texture + Depth)
-# ============================================================
-
-_spoof_history = []
-_MAX_SPOOF_HISTORY = 8
-
-
-def detect_screen_display(img_bgr, face_bbox):
-    """
-    Detect if face is displayed on a phone/tablet/monitor screen.
-    Three independent physical signals:
-      1. Brightness anomaly — screen emits light, brighter than surroundings
-      2. Rectangular border — phone bezel creates strong straight edges
-      3. Color temperature — screens shift colors toward blue
-    Returns: (is_screen, screen_evidence 0-100)
-    """
-    h, w = img_bgr.shape[:2]
-    x1, y1, x2, y2 = face_bbox
-    fw, fh = x2 - x1, y2 - y1
-
-    if fw < 20 or fh < 20:
-        return False, 0
-
-    screen_evidence = 0
-
-    # --- Signal 1: Brightness Contrast ---
-    face_gray = cv2.cvtColor(img_bgr[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
-    face_brightness = float(np.mean(face_gray))
-
-    corner_sz = max(30, min(h, w) // 8)
-    corners = []
-    for cy, cx in [(0, 0), (0, w - corner_sz), (h - corner_sz, 0), (h - corner_sz, w - corner_sz)]:
-        region = img_bgr[cy:cy + corner_sz, cx:cx + corner_sz]
-        if region.size > 0:
-            corners.append(float(np.mean(cv2.cvtColor(region, cv2.COLOR_BGR2GRAY))))
-    bg_brightness = float(np.mean(corners)) if corners else face_brightness
-    brightness_ratio = face_brightness / (bg_brightness + 1e-6)
-
-    if brightness_ratio > 2.5:
-        screen_evidence += 45
-    elif brightness_ratio > 1.8:
-        screen_evidence += 30
-    elif brightness_ratio > 1.4:
-        screen_evidence += 15
-
-    # --- Signal 2: Rectangular Border Detection ---
-    pad = int(max(fw, fh) * 0.8)
-    sx1, sy1 = max(0, x1 - pad), max(0, y1 - pad)
-    sx2, sy2 = min(w, x2 + pad), min(h, y2 + pad)
-    search_gray = cv2.cvtColor(img_bgr[sy1:sy2, sx1:sx2], cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(search_gray, 30, 100)
-    min_line_len = max(min(search_gray.shape[:2]) // 4, 30)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=60,
-                            minLineLength=min_line_len, maxLineGap=15)
-    if lines is not None:
-        h_count, v_count = 0, 0
-        for line in lines:
-            lx1, ly1, lx2, ly2 = line[0]
-            angle = abs(np.degrees(np.arctan2(ly2 - ly1, lx2 - lx1)))
-            if angle < 20 or angle > 160:
-                h_count += 1
-            elif 70 < angle < 110:
-                v_count += 1
-        if h_count >= 2 and v_count >= 2:
-            screen_evidence += 35
-        elif h_count >= 1 and v_count >= 1:
-            screen_evidence += 15
-
-    # --- Signal 3: Color Temperature ---
-    face_bgr = img_bgr[y1:y2, x1:x2].astype(np.float32)
-    b_mean = float(np.mean(face_bgr[:, :, 0]))
-    r_mean = float(np.mean(face_bgr[:, :, 2]))
-    blue_ratio = b_mean / (r_mean + 1e-6)
-    if blue_ratio > 1.15:
-        screen_evidence += 20
-    elif blue_ratio > 1.0:
-        screen_evidence += 10
-
-    is_screen = screen_evidence >= 45
-    return is_screen, min(100, screen_evidence)
-
-
-def compute_anti_spoof_score(depth_score, face_roi_gray, img_bgr, face_bbox):
-    """
-    Hardcore anti-spoofing. Screen detection → instant score tank.
-    """
-    global _spoof_history
-
-    # Screen detection (primary defense)
-    is_screen, screen_conf = detect_screen_display(img_bgr, face_bbox)
-    if is_screen:
-        score = max(0, 20 - screen_conf // 3)
-        _spoof_history.append(score)
-        if len(_spoof_history) > _MAX_SPOOF_HISTORY:
-            _spoof_history.pop(0)
-        return score, True
-
-    # LBP texture analysis
-    texture_score = 60
-    if face_roi_gray is not None and face_roi_gray.size > 0:
-        try:
-            fr = cv2.resize(face_roi_gray, (128, 128)).astype(np.int16)
-            center = fr[1:-1, 1:-1]
-            lbp = np.zeros_like(center, dtype=np.uint8)
-            offsets = [(-1,-1,7),(-1,0,6),(-1,1,5),(0,1,4),(1,1,3),(1,0,2),(1,-1,1),(0,-1,0)]
-            for dy, dx, bit in offsets:
-                lbp |= ((fr[1+dy:fr.shape[0]-1+dy, 1+dx:fr.shape[1]-1+dx] >= center).astype(np.uint8) << bit)
-            texture_score = min(100, int(float(np.var(lbp.astype(np.float64))) / 3000 * 100))
-        except Exception:
-            texture_score = 60
-
-    composite = int(depth_score * 0.50 + texture_score * 0.50)
-    composite = max(0, min(100, composite))
-
-    _spoof_history.append(composite)
-    if len(_spoof_history) > _MAX_SPOOF_HISTORY:
-        _spoof_history.pop(0)
-    if len(_spoof_history) >= 3:
-        avg = int(np.mean(_spoof_history))
-        if avg < 30:
-            composite = min(composite, avg)
-
-    return composite, False
-
 
 
 # ============================================================
@@ -517,7 +441,7 @@ def register_face(user_id, base64_img):
 
     h, w = img.shape[:2]
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    results = _face_mesh.process(img_rgb)
+    results = _run_face_mesh(img_rgb)
 
     if not results.multi_face_landmarks:
         return False
@@ -534,14 +458,14 @@ def register_face(user_id, base64_img):
     if embedding is None:
         return False
 
-    # Store in database
+    # Store in database (encrypted -- see _encrypt_embeddings)
     conn = get_db_connection()
     user = conn.execute("SELECT face_embedding FROM users WHERE id = ?", (user_id,)).fetchone()
 
     existing = []
     if user and user['face_embedding']:
         try:
-            existing = json.loads(user['face_embedding'])
+            existing = _decrypt_embeddings(user['face_embedding'])
         except Exception:
             existing = []
 
@@ -551,15 +475,23 @@ def register_face(user_id, base64_img):
     if len(existing) > MAX_EMBEDDINGS:
         existing = existing[-MAX_EMBEDDINGS:]
 
+    # face_registered only flips to 1 once at least `min_face_samples`
+    # embeddings are stored -- previously this was set after a single
+    # sample, making the min_face_samples setting have no real effect.
+    from database.db import get_setting
+    min_samples = int(get_setting('min_face_samples', '5'))
+    is_fully_registered = 1 if len(existing) >= min_samples else 0
+
     conn.execute(
-        "UPDATE users SET face_embedding = ?, face_registered = 1 WHERE id = ?",
-        (json.dumps(existing), user_id)
+        "UPDATE users SET face_embedding = ?, face_registered = ? WHERE id = ?",
+        (_encrypt_embeddings(existing), is_fully_registered, user_id)
     )
     conn.commit()
     conn.close()
 
     invalidate_cache()
-    print(f"[Register] User {user_id}: {len(existing)} embeddings stored")
+    print(f"[Register] User {user_id}: {len(existing)} embeddings stored "
+          f"(fully_registered={bool(is_fully_registered)}, min_required={min_samples})")
     return True
 
 
@@ -594,90 +526,75 @@ def _find_best_match(query_embedding):
     return best_user, best_sim
 
 
-def recognize_face_with_liveness(base64_img):
+def recognize_face_with_liveness(frame_bgr, match_threshold=0.40):
     """
-    Full recognition pipeline:
-      1. MediaPipe Face Mesh → 478 landmarks (detection + liveness)
+    Recognition + active-challenge-metrics pipeline. Called by app.py ONLY
+    after the trained MobileNetV3-Small liveness model (app.py, a separate
+    BlazeFace-based pass) has already classified this frame as LIVE -- this
+    function no longer does any passive spoof scoring itself (that engine
+    was deleted; see MODEL_CARD-equivalent notes in app.py).
+
+      1. MediaPipe Face Mesh → 478 landmarks (detection + challenge metrics)
       2. ArcFace alignment → 112×112 aligned crop
       3. ArcFace ONNX → 512-D embedding
       4. Vectorized cosine similarity → match
-      5. EAR + 3D depth → liveness & anti-spoof
+      5. EAR + head yaw → blink / head-turn challenge metrics
 
-    Returns: (user_id, liveness_metrics, confidence, anti_spoof_score, spoof_checks)
+    Args:
+        frame_bgr: already-decoded BGR frame (np.ndarray) -- decoded once by
+            the caller and reused here, rather than re-decoding the same
+            base64 image twice per request.
+        match_threshold: cosine-similarity threshold for a positive ArcFace
+            match. Passed in by the caller (app.py), which reads it from the
+            admin-configurable `face_tolerance` setting -- not hardcoded.
+
+    Returns: (user_id, liveness_metrics, confidence, multi_face: bool)
     """
     try:
-        t_start = time.time()
+        if frame_bgr is None:
+            return None, {}, 0, False
 
-        img = data_uri_to_cv2_img(base64_img)
-        if img is None:
-            return None, {}, 0, 0, {}
+        h, w = frame_bgr.shape[:2]
 
-        h, w = img.shape[:2]
-
-        # --- MediaPipe Face Mesh ---
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        mesh_results = _face_mesh.process(img_rgb)
+        # --- MediaPipe Face Mesh (Tasks API FaceLandmarker) ---
+        img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        mesh_results = _run_face_mesh(img_rgb)
 
         if not mesh_results.multi_face_landmarks:
-            return None, {}, 0, 0, {}
+            return None, {}, 0, False
 
         if len(mesh_results.multi_face_landmarks) > 1:
-            return None, {}, 0, 0, {"multi_face": True}
+            return None, {}, 0, True
 
         lms = mesh_results.multi_face_landmarks[0].landmark
 
-        # --- Liveness metrics ---
-        liveness = compute_liveness_metrics(img, mesh_results)
-
-        # --- Anti-spoofing ---
-        x1, y1, x2, y2 = _get_face_bbox(lms, w, h)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        face_roi_gray = gray[y1:y2, x1:x2]
-
-        anti_spoof_score, screen_detected = compute_anti_spoof_score(
-            liveness.get("depth_score", 50),
-            face_roi_gray,
-            img,
-            (x1, y1, x2, y2)
-        )
-
-        spoof_checks = {
-            "3d_depth": bool(liveness.get("depth_score", 0) > 25),
-            "face_mesh": bool(liveness.get("face_mesh_detected", False)),
-            "texture": bool(anti_spoof_score > 30),
-            "screen_detected": bool(screen_detected),
-        }
+        # --- Challenge metrics (blink EAR, head yaw) ---
+        liveness = compute_liveness_metrics(frame_bgr, mesh_results)
 
         # --- ArcFace alignment + embedding ---
         if _arcface_session is None:
-            return None, liveness, 0, anti_spoof_score, spoof_checks
+            return None, liveness, 0, False
 
-        aligned = _align_face(img, lms, w, h)
+        aligned = _align_face(frame_bgr, lms, w, h)
         if aligned is None:
-            return None, liveness, 0, anti_spoof_score, spoof_checks
+            return None, liveness, 0, False
 
         embedding = _get_embedding(aligned)
         if embedding is None:
-            return None, liveness, 0, anti_spoof_score, spoof_checks
+            return None, liveness, 0, False
 
         # --- Match ---
         user_id, similarity = _find_best_match(embedding)
-
-        MATCH_THRESHOLD = 0.40
         confidence = int(max(0, similarity) * 100)
 
-        t_total = int((time.time() - t_start) * 1000)
+        if user_id is not None and similarity >= match_threshold:
+            print(f"[Pipeline] MATCH user={user_id} sim={similarity:.3f}")
+            return user_id, liveness, confidence, False
 
-        if user_id is not None and similarity >= MATCH_THRESHOLD:
-            print(f"[Pipeline] {t_total}ms | MATCH user={user_id} "
-                  f"sim={similarity:.3f} depth={liveness.get('depth_score', 0)} "
-                  f"spoof={anti_spoof_score}")
-            return user_id, liveness, confidence, anti_spoof_score, spoof_checks
-
-        print(f"[Pipeline] {t_total}ms | NO MATCH (best_sim={similarity:.3f})")
-        return None, liveness, confidence, anti_spoof_score, spoof_checks
+        print(f"[Pipeline] NO MATCH (best_sim={similarity:.3f})")
+        return None, liveness, confidence, False
 
     except Exception as e:
         traceback.print_exc()
         print(f"[Pipeline] CRASH: {e}")
-        return None, {"error": str(e)}, 0, 0, {"pipeline_error": True}
+        return None, {"error": str(e)}, 0, False

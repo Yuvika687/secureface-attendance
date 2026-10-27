@@ -11,6 +11,7 @@
 </div>
 
 <form method="POST" id="adminLoginForm" style="display:flex; flex-direction:column; gap:1rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
         <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.4rem;">Admin Email</label>
         <div style="position:relative;">
@@ -32,7 +33,7 @@
 
 <div style="text-align:center; margin-top:1.5rem; padding-top:1.25rem; border-top:1px solid var(--border);">
     <a href="{{ url_for('login') }}" style="font-size:0.72rem; color:var(--text-muted); text-decoration:none; font-weight:600; letter-spacing:0.5px; text-transform:uppercase;">
-        <i class="fa-regular fa-user"></i> Employee Portal
+        <i class="fa-regular fa-user"></i> Student Portal
     </a>
 </div>
 

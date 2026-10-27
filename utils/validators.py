@@ -61,20 +61,20 @@ def validate_employee_id(emp_id):
     - No spaces
     """
     if not emp_id or not emp_id.strip():
-        return None, "Employee ID is required."
+        return None, "Student ID is required."
 
     emp_id = emp_id.strip().upper()
 
     if len(emp_id) < 3:
-        return None, "Employee ID must be at least 3 characters."
+        return None, "Student ID must be at least 3 characters."
     if len(emp_id) > 15:
-        return None, "Employee ID must be less than 15 characters."
+        return None, "Student ID must be less than 15 characters."
 
     if not re.match(r'^[A-Z0-9\-]+$', emp_id):
-        return None, "Employee ID can only contain letters, numbers, and hyphens."
+        return None, "Student ID can only contain letters, numbers, and hyphens."
 
     if emp_id.startswith('-') or emp_id.endswith('-'):
-        return None, "Employee ID cannot start or end with a hyphen."
+        return None, "Student ID cannot start or end with a hyphen."
 
     return emp_id, None
 

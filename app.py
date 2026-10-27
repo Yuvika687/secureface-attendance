@@ -4,22 +4,46 @@ import csv
 import uuid
 import sqlite3
 import random
+import time
+import hashlib
+import math
+from collections import deque
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for, Response
+from flask_wtf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from config import Config
-from database.db import get_db_connection, init_db, get_setting, set_setting
-from utils.face_utils import register_face, recognize_face_with_liveness
+from database.db import get_db_connection, init_db, get_setting, set_setting, _DEFAULT_SETTINGS
+from utils.face_utils import register_face, recognize_face_with_liveness, data_uri_to_cv2_img
 from utils.validators import (
     validate_registration, validate_profile_update, validate_name,
     validate_employee_id, validate_email, validate_phone, validate_password,
     validate_department, validate_status, validate_date, validate_time,
     validate_profile_photo, generate_secure_password, ALLOWED_DEPARTMENTS
 )
+from liveness.face_utils import FaceDetector, crop_face
+from liveness.predictor import LivenessPredictor, classify_three_way, load_gray_zone_band
+
+try:
+    import psycopg2
+    _IntegrityErrors = (sqlite3.IntegrityError, psycopg2.IntegrityError)
+except ImportError:
+    _IntegrityErrors = (sqlite3.IntegrityError,)
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Debug mode: only on when explicitly requested (local development), never
+# the previous hardcoded `debug=True`. Set FLASK_DEBUG=1 for local dev.
+DEBUG_MODE = os.environ.get("FLASK_DEBUG", "0") == "1"
+
+csrf = CSRFProtect(app)
+# All <form method="POST"> templates carry a hidden csrf_token field, and
+# every fetch() POST goes through a global wrapper (static/js/csrf.js) that
+# attaches the X-CSRFToken header read from a <meta> tag -- Flask-WTF
+# accepts the token from either place. Nothing is blanket-exempted: every
+# state-changing endpoint, including the JSON ones, is actually protected.
 
 # Ensure upload directory exists
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
@@ -30,7 +54,7 @@ if not Config.USE_POSTGRES:
         os.makedirs(os.path.dirname(Config.DATABASE_URI), exist_ok=True)
         init_db()
     else:
-        # Ensure new columns exist (migration for existing DBs)
+        # Migration for existing DBs: ensure newer columns/tables/settings exist.
         conn = get_db_connection()
         for col, coltype in [('profile_photo', 'TEXT'), ('face_embedding', 'TEXT')]:
             try:
@@ -41,9 +65,39 @@ if not Config.USE_POSTGRES:
                     conn.commit()
                 except Exception:
                     pass
+        try:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS liveness_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN')),
+                    p_spoof REAL NOT NULL,
+                    user_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        except Exception:
+            pass
+        for key, value in _DEFAULT_SETTINGS.items():
+            try:
+                conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
+            except Exception:
+                pass
+        conn.commit()
         conn.close()
 else:
     init_db()
+
+# --- Liveness model (loaded once at startup, not per-request) ---
+# This is the trained MobileNetV3-Small classifier from anti_spoof_attendance,
+# reused verbatim via the liveness/ subpackage -- it replaces SmartFace's
+# deleted rule-based anti-spoofing engine as the sole spoof detector.
+print("[Liveness] Loading trained liveness model + BlazeFace detector...")
+_liveness_detector = FaceDetector()
+_liveness_predictor = LivenessPredictor()
+_gray_zone_band = load_gray_zone_band()
+print(f"[Liveness] Ready. Gray-zone band: {_gray_zone_band}")
 
 # --- APScheduler for auto email notifications ---
 scheduler = None
@@ -87,6 +141,81 @@ def is_late(time_str):
         return t.hour > hour or (t.hour == hour and t.minute > minute)
     except Exception:
         return False
+
+
+# ============================================================
+#  LIVENESS PIPELINE HELPERS (per-session, not global)
+# ============================================================
+# Everything here lives in Flask's signed session cookie, scoped to one
+# browser -- not a module-level global like the deleted _spoof_history,
+# which leaked state between concurrent users/sessions.
+
+RECENT_PROBS_WINDOW = 5          # frames averaged for the smoothed P(spoof)
+FACE_MOVE_REJECT_RATIO = 0.6     # center displacement > 60% of face size => treat as a different physical subject
+
+
+def _get_liveness_session_id():
+    """A stable per-browser-session id for the liveness_events log, distinct
+    from the Flask auth session (the scanner page has no login)."""
+    if 'liveness_session_id' not in session:
+        session['liveness_session_id'] = uuid.uuid4().hex
+    return session['liveness_session_id']
+
+
+def _smoothed_prob_spoof(raw_prob):
+    """Per-session rolling average of the last RECENT_PROBS_WINDOW raw
+    P(spoof) values -- replaces the deleted global _spoof_history list."""
+    recent = session.get('recent_probs', [])
+    recent.append(raw_prob)
+    recent = recent[-RECENT_PROBS_WINDOW:]
+    session['recent_probs'] = recent
+    return sum(recent) / len(recent)
+
+
+def _reset_liveness_session():
+    """Clears all per-session liveness/challenge state -- called on no-face,
+    multi-face, an abrupt face-position jump, or a logged-out SPOOF/UNCERTAIN
+    decision, so a new physical subject always starts from a clean slate."""
+    session.pop('recent_probs', None)
+    session.pop('last_bbox', None)
+    session.pop('last_logged_decision', None)
+    session.pop('challenge_type', None)
+    session.pop('challenge_user', None)
+    session.pop('challenge_neutral_seen', None)
+
+
+def _face_moved_too_much(prev_bbox, cur_bbox):
+    """True if the face's center moved more than FACE_MOVE_REJECT_RATIO of
+    its own size since the last frame -- a same-face consistency check: the
+    face that passes liveness must stay the same physical subject through
+    recognition and the challenge, not be swapped mid-sequence."""
+    if prev_bbox is None:
+        return False
+    px, py, pw, ph = prev_bbox
+    cx, cy, cw, ch = cur_bbox
+    pcx, pcy = px + pw / 2.0, py + ph / 2.0
+    ccx, ccy = cx + cw / 2.0, cy + ch / 2.0
+    dist = math.hypot(ccx - pcx, ccy - pcy)
+    ref_size = max(cw, ch, 1)
+    return (dist / ref_size) > FACE_MOVE_REJECT_RATIO
+
+
+def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
+    """Writes one liveness_events row ONLY when the decision differs from the
+    last one logged for this session -- one row per decision CHANGE, not one
+    row per frame (frames arrive every ~150-300ms; logging every one would
+    flood the table)."""
+    sid = _get_liveness_session_id()
+    if session.get('last_logged_decision') == decision:
+        return
+    session['last_logged_decision'] = decision
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO liveness_events (session_id, decision, p_spoof, user_id) VALUES (?, ?, ?, ?)",
+        (sid, decision, round(float(p_spoof), 4), user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ============================================================
@@ -180,9 +309,17 @@ def register():
             conn.commit()
             flash("Registration successful! Please login.", "success")
             return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
-            flash("Employee ID or Email already exists.", "danger")
+        except _IntegrityErrors:
+            # Catches both sqlite3.IntegrityError and psycopg2.IntegrityError
+            # (previously only caught sqlite3's -- a duplicate employee_id/email
+            # under Postgres fell through to the generic except below instead
+            # of this specific message). NOTE: not yet tested against a live
+            # Postgres database -- confirm this path for real before relying
+            # on it in production.
+            conn.rollback()
+            flash("Student ID or Email already exists.", "danger")
         except Exception as e:
+            conn.rollback()
             flash("Registration failed. Please try again.", "danger")
         finally:
             conn.close()
@@ -308,11 +445,18 @@ def admin_dashboard():
     present_today = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (today,)).fetchone()[0]
     present_yesterday = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (yesterday,)).fetchone()[0]
 
-    today_records = conn.execute("SELECT time FROM attendance WHERE date = ?", (today,)).fetchall()
-    late_count = sum(1 for r in today_records if is_late(r['time']))
-
-    yesterday_records = conn.execute("SELECT time FROM attendance WHERE date = ?", (yesterday,)).fetchall()
-    late_yesterday = sum(1 for r in yesterday_records if is_late(r['time']))
+    # Read the stored `status` column (set once, at check-in time, using
+    # whatever the late cutoff was *then*) rather than recomputing from
+    # is_late() against the *current* cutoff setting -- the two disagreed on
+    # historical days whenever an admin changed the cutoff, since analytics()
+    # already used the stored-status approach while this route recomputed
+    # live. Both now use the same method everywhere.
+    late_count = conn.execute(
+        "SELECT COUNT(*) FROM attendance WHERE date = ? AND status = 'Late'", (today,)
+    ).fetchone()[0]
+    late_yesterday = conn.execute(
+        "SELECT COUNT(*) FROM attendance WHERE date = ? AND status = 'Late'", (yesterday,)
+    ).fetchone()[0]
 
     attendance_rate = round((present_today / total_emp * 100), 1) if total_emp > 0 else 0
 
@@ -379,7 +523,7 @@ def manage_employees():
             conn.execute("DELETE FROM attendance WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
             conn.commit()
-            flash("Employee removed successfully.", "success")
+            flash("Student removed successfully.", "success")
             return redirect(url_for("manage_employees"))
 
     employees = conn.execute(
@@ -479,8 +623,9 @@ def analytics():
         weekly_labels.append(label)
 
         present = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (d,)).fetchone()[0]
-        records = conn.execute("SELECT time FROM attendance WHERE date = ?", (d,)).fetchall()
-        late = sum(1 for r in records if is_late(r['time']))
+        late = conn.execute(
+            "SELECT COUNT(*) FROM attendance WHERE date = ? AND status = 'Late'", (d,)
+        ).fetchone()[0]
 
         weekly_present.append(present)
         weekly_late.append(late)
@@ -563,6 +708,8 @@ def settings():
         late_minute = request.form.get("late_cutoff_minute", "0")
         company_name = request.form.get("company_name", "Sofzenix Technologies")
         face_tolerance = request.form.get("face_tolerance", "0.45")
+        min_face_samples = request.form.get("min_face_samples", "5")
+        liveness_threshold = request.form.get("liveness_threshold", "0.5")
 
         # Email settings
         email_enabled = request.form.get("email_enabled", "0")
@@ -574,6 +721,8 @@ def settings():
         set_setting('late_cutoff_minute', late_minute)
         set_setting('company_name', company_name)
         set_setting('face_tolerance', face_tolerance)
+        set_setting('min_face_samples', min_face_samples)
+        set_setting('liveness_threshold', liveness_threshold)
         set_setting('email_enabled', email_enabled)
         set_setting('email_trigger_hour', email_hour)
         set_setting('email_trigger_minute', email_minute)
@@ -606,6 +755,8 @@ def settings():
         'late_cutoff_minute': get_setting('late_cutoff_minute', '0'),
         'company_name': get_setting('company_name', 'Sofzenix Technologies'),
         'face_tolerance': get_setting('face_tolerance', '0.45'),
+        'min_face_samples': get_setting('min_face_samples', '5'),
+        'liveness_threshold': get_setting('liveness_threshold', '0.5'),
         'email_enabled': get_setting('email_enabled', '0'),
         'email_trigger_hour': get_setting('email_trigger_hour', '18'),
         'email_trigger_minute': get_setting('email_trigger_minute', '0'),
@@ -647,7 +798,7 @@ def export_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Employee ID', 'Name', 'Department', 'Date', 'Time', 'Status', 'Method'])
+    writer.writerow(['Student ID', 'Name', 'Department', 'Date', 'Time', 'Status', 'Method'])
 
     for r in records:
         writer.writerow([r['employee_id'], r['name'], r['department'],
@@ -686,7 +837,13 @@ def employee_dashboard():
         (session["user_id"],)
     ).fetchone()[0]
 
-    late_count = sum(1 for r in history if is_late(r['time']))
+    # Stored status, over ALL records -- not recomputed from is_late() against
+    # the *current* cutoff, and not limited to the last-30 `history` slice
+    # (which under-counted late days beyond the most recent 30 records).
+    late_count = conn.execute(
+        "SELECT COUNT(*) FROM attendance WHERE user_id = ? AND status = 'Late'",
+        (session["user_id"],)
+    ).fetchone()[0]
 
     absent_count = conn.execute(
         "SELECT COUNT(*) FROM attendance WHERE user_id = ? AND status = 'Absent'",
@@ -745,7 +902,8 @@ def employee_dashboard():
                            today_status=today_status,
                            calendar_data=calendar_data,
                            greeting=greeting,
-                           late_days=late_count)
+                           late_days=late_count,
+                           min_face_samples=int(get_setting('min_face_samples', '5')))
 
 
 @app.route("/scanner")
@@ -792,6 +950,21 @@ def api_register_face():
 
 @app.route("/api/recognize_face", methods=["POST"])
 def api_recognize_face():
+    """
+    Pipeline (approved plan): frame -> BlazeFace detect -> trained
+    MobileNetV3-Small liveness model -> if SPOOF/UNCERTAIN, reject + log +
+    stop (Face Mesh/ArcFace never run) -> if LIVE, Face Mesh + ArcFace
+    recognition -> blink/head-turn challenge -> mark attendance.
+
+    The liveness model keeps running on every frame, including during the
+    challenge (not just once) -- this is what makes the same-face
+    consistency check below possible across the whole LIVE -> recognize ->
+    challenge sequence, and smooths over a single bad frame during head
+    movement via the per-session rolling average rather than hard-rejecting
+    on one blip.
+    """
+    timings = {}
+    t_request_start = time.perf_counter()
     try:
         data = request.json
         base64_img = data.get("image")
@@ -800,17 +973,110 @@ def api_recognize_face():
         if not base64_img:
             return jsonify({"success": False, "recognized": False, "msg": "No image data received."})
 
-        user_id, liveness_metrics, confidence, anti_spoof_score, spoof_checks = recognize_face_with_liveness(base64_img)
+        t0 = time.perf_counter()
+        frame = data_uri_to_cv2_img(base64_img)
+        timings["decode_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        if frame is None:
+            return jsonify({"success": False, "recognized": False, "msg": "Could not decode image."})
 
-        # Debug logging for pipeline diagnostics
-        print(f"[Recognition] user_id={user_id}, confidence={confidence}, "
-              f"anti_spoof={anti_spoof_score}, liveness={liveness_metrics}")
+        # --- Stage 1: BlazeFace detect (the liveness model's own detector) ---
+        t0 = time.perf_counter()
+        detections = _liveness_detector.detect(frame)
+        timings["detect_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
-        if spoof_checks.get("multi_face"):
+        if len(detections) == 0:
+            _reset_liveness_session()
+            timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
+            return jsonify({
+                "success": False, "recognized": False, "face_found": False,
+                "state": "NO_FACE", "timings": timings,
+                "msg": "Waiting for valid subject...",
+            })
+
+        if len(detections) > 1:
+            _reset_liveness_session()
+            timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False,
+                "state": "MULTI_FACE", "timings": timings,
                 "msg": "Multiple faces detected. Only one person at a time.",
-                "multi_face": True
+                "multi_face": True,
+            })
+
+        best = max(detections, key=lambda d: d.width * d.height)
+        cur_bbox = [best.x, best.y, best.width, best.height]
+
+        # Same-face consistency: an abrupt position jump between frames means
+        # this is no longer the same physical subject that was mid-sequence
+        # -- reset everything (liveness smoothing + any in-progress
+        # recognition challenge) rather than silently continuing as if
+        # nothing happened.
+        prev_bbox = session.get('last_bbox')
+        if _face_moved_too_much(prev_bbox, cur_bbox):
+            _reset_liveness_session()
+        session['last_bbox'] = cur_bbox
+
+        # --- Stage 2: crop_face() (identical to anti_spoof_attendance's, see
+        # tests/test_crop_identical.py) + the trained MobileNetV3-Small model
+        # -- this REPLACES SmartFace's old rule-based screen/texture/depth
+        # anti-spoofing entirely. ---
+        crop = crop_face(frame, best)
+        if crop is None or crop.size == 0:
+            timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
+            return jsonify({
+                "success": False, "recognized": False, "face_found": False,
+                "state": "NO_FACE", "timings": timings,
+                "msg": "Face too close to the frame edge.",
+            })
+
+        t0 = time.perf_counter()
+        raw_prob_spoof = _liveness_predictor.predict_prob(crop)
+        timings["liveness_classify_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+        smoothed_prob_spoof = _smoothed_prob_spoof(raw_prob_spoof)
+        liveness_threshold = float(get_setting('liveness_threshold', '0.5'))
+        decision = classify_three_way(smoothed_prob_spoof, *_gray_zone_band, threshold=liveness_threshold)
+
+        if decision != "LIVE":
+            _log_liveness_event_if_changed(decision, smoothed_prob_spoof)
+            # A SPOOF/UNCERTAIN frame also ends any in-progress challenge --
+            # the subject in front of the camera is not currently verified
+            # live, so nothing they do should be able to complete a
+            # challenge that was issued while they briefly were.
+            session.pop('challenge_type', None)
+            session.pop('challenge_user', None)
+            session.pop('challenge_neutral_seen', None)
+            timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
+            if decision == "SPOOF":
+                return jsonify({
+                    "success": False, "recognized": False,
+                    "state": "SPOOF", "spoofing_detected": True,
+                    "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
+                    "msg": "Spoofing detected — live presence required.",
+                })
+            return jsonify({
+                "success": False, "recognized": False,
+                "state": "UNCERTAIN",
+                "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
+                "msg": "Hold still — checking again",
+            })
+
+        _log_liveness_event_if_changed("LIVE", smoothed_prob_spoof)
+
+        # --- Stage 3: LIVE -> now (and only now) run Face Mesh + ArcFace ---
+        face_tolerance = float(get_setting('face_tolerance', '0.45'))
+        t0 = time.perf_counter()
+        user_id, liveness_metrics, confidence, multi_face = recognize_face_with_liveness(frame, match_threshold=face_tolerance)
+        timings["recognition_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
+
+        if multi_face:
+            _reset_liveness_session()
+            return jsonify({
+                "success": False, "recognized": False,
+                "state": "MULTI_FACE", "timings": timings,
+                "msg": "Multiple faces detected. Only one person at a time.",
+                "multi_face": True,
             })
 
         if user_id:
@@ -819,23 +1085,11 @@ def api_recognize_face():
             conn.close()
 
             if not user_info:
-                return jsonify({"success": False, "recognized": False, "msg": "User not found."})
+                return jsonify({"success": False, "recognized": False, "state": "LIVE", "timings": timings, "msg": "User not found."})
 
-            # Anti-spoof threshold (new deep pipeline is reliable, 30 avoids false positives)
-            if anti_spoof_score < 30:
-                failed = [k.replace('_', ' ').title() for k, v in spoof_checks.items() if not v]
-                fail_reason = f"Failed checks: {', '.join(failed)}" if failed else "Liveness not verified"
-                return jsonify({
-                    "success": False, "recognized": True,
-                    "spoofing_detected": True,
-                    "anti_spoof_score": anti_spoof_score,
-                    "spoof_checks": spoof_checks,
-                    "confidence": confidence,
-                    "msg": f"⚠️ Spoofing detected! ({fail_reason})"
-                })
-
-            # Liveness Challenge — RANDOM action to defeat video replay
-            # Videos can fake blinks but can't predict random challenges
+            # Liveness Challenge — RANDOM action to defeat video replay.
+            # Videos can fake blinks but can't predict random challenges.
+            # Unchanged from the original SmartFace logic.
             challenge_types = ['blink', 'turn_left', 'turn_right']
             if 'challenge_type' not in session or session.get('challenge_user') != user_info['name']:
                 session['challenge_type'] = random.choice(challenge_types)
@@ -845,12 +1099,10 @@ def api_recognize_face():
             challenge = session['challenge_type']
             head_yaw = liveness_metrics.get('head_yaw', 0)
 
-            # Check if challenge completed
             challenge_passed = False
             if challenge == 'blink' and liveness_verified:
                 challenge_passed = True
             elif challenge == 'turn_left':
-                # Must first face center, then turn left
                 if abs(head_yaw) < 0.08:
                     session['challenge_neutral_seen'] = True
                 if session.get('challenge_neutral_seen') and head_yaw < -0.12:
@@ -868,16 +1120,15 @@ def api_recognize_face():
                     'turn_right': '↪️ Turn your head RIGHT slowly',
                 }
                 return jsonify({
-                    "success": False, "recognized": True,
+                    "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
-                    "anti_spoof_score": anti_spoof_score,
-                    "spoof_checks": spoof_checks,
-                    "confidence": confidence,
+                    "p_spoof": round(smoothed_prob_spoof, 4),
+                    "confidence": confidence, "timings": timings,
                     "challenge": challenge,
                     "msg": f"{user_info['name']} — {challenge_msgs.get(challenge, 'Verify')}",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
-                    "department": user_info['department']
+                    "department": user_info['department'],
                 })
 
             # Challenge passed! Clear session
@@ -899,45 +1150,35 @@ def api_recognize_face():
                 conn.commit()
                 conn.close()
                 return jsonify({
-                    "success": True, "recognized": True,
+                    "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Access Granted. Attendance verified for {user_info['name']}",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
                     "status": status, "time": time_str,
-                    "anti_spoof_score": anti_spoof_score,
-                    "confidence": confidence
+                    "p_spoof": round(smoothed_prob_spoof, 4),
+                    "confidence": confidence, "timings": timings,
                 })
             else:
                 conn.close()
                 return jsonify({
-                    "success": True, "recognized": True,
+                    "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Welcome back, {user_info['name']}. Already checked in today.",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
-                    "anti_spoof_score": anti_spoof_score,
-                    "confidence": confidence
+                    "p_spoof": round(smoothed_prob_spoof, 4),
+                    "confidence": confidence, "timings": timings,
                 })
 
-        # Face was detected and analyzed (anti_spoof ran) but not recognized
-        if confidence > 0 or anti_spoof_score > 0:
-            return jsonify({
-                "success": False, "recognized": False,
-                "face_found": True, "liveness_metrics": liveness_metrics,
-                "anti_spoof_score": anti_spoof_score,
-                "confidence": confidence,
-                "spoof_checks": spoof_checks,
-                "msg": "Identity Unknown — Please register first"
-            })
-
+        # LIVE, face found, but not recognized (either unregistered, or
+        # fewer than min_face_samples enrolled -- see register_face()).
         return jsonify({
-            "success": False, "recognized": False,
-            "face_found": False,
-            "anti_spoof_score": anti_spoof_score,
-            "confidence": 0,
-            "spoof_checks": spoof_checks,
-            "msg": "Waiting for valid subject..."
+            "success": False, "recognized": False, "state": "LIVE",
+            "face_found": True, "liveness_metrics": liveness_metrics,
+            "p_spoof": round(smoothed_prob_spoof, 4),
+            "confidence": confidence, "timings": timings,
+            "msg": "Identity Unknown — Please register first",
         })
 
     except Exception as e:
@@ -946,7 +1187,7 @@ def api_recognize_face():
         return jsonify({
             "success": False, "recognized": False,
             "msg": f"Recognition engine error: {str(e)}",
-            "error": True
+            "error": True,
         }), 500
 
 
@@ -980,23 +1221,38 @@ def api_edit_attendance():
 
 @app.route("/api/system_status")
 def api_system_status():
-    """System health check for admin dashboard."""
+    """System health check for admin dashboard.
+
+    Previously imported get_face_detector/TRAINER_PATH from utils.face_utils
+    and read a 'face_data' directory -- none of which exist in this engine
+    (leftover from an older LBPH-based version), so this always fell into
+    the except branch and reported 'ai: Error'. Now reports the real,
+    currently-loaded liveness model and ArcFace engine state."""
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
     status = {}
 
     # Camera (always 'Available' on server — actual check is client-side)
     status['camera'] = {'status': 'Available', 'detail': 'Browser webcam access'}
 
-    # AI Engine
+    # AI Engine: the real trained liveness model + ArcFace recognition engine
     try:
-        from utils.face_utils import get_face_detector, TRAINER_PATH
-        net = get_face_detector()
-        face_files = [f for f in os.listdir('face_data') if f.endswith('.enc') or (f.startswith('face_') and f.endswith('.jpg'))]
-        trainer_exists = os.path.exists(TRAINER_PATH)
-        ai_detail = f"DNN {'active' if net else 'fallback'}, {len(face_files)} faces enrolled"
-        if not trainer_exists:
-            status['ai'] = {'status': 'Ready', 'detail': ai_detail + ' — no model trained yet'}
+        from utils.face_utils import _arcface_session
+        arcface_ready = _arcface_session is not None
+        liveness_ready = _liveness_predictor is not None and _liveness_detector is not None
+        if liveness_ready and arcface_ready:
+            status['ai'] = {
+                'status': 'Active',
+                'detail': f"Liveness: MobileNetV3-Small on {_liveness_predictor.device} | ArcFace: w600k_r50 loaded",
+            }
         else:
-            status['ai'] = {'status': 'Active', 'detail': ai_detail}
+            missing = []
+            if not liveness_ready:
+                missing.append("liveness model")
+            if not arcface_ready:
+                missing.append("ArcFace model")
+            status['ai'] = {'status': 'Degraded', 'detail': f"Not loaded: {', '.join(missing)}"}
     except Exception as e:
         status['ai'] = {'status': 'Error', 'detail': str(e)}
 
@@ -1041,7 +1297,7 @@ def api_manual_attendance():
         return jsonify({"success": False, "msg": t_err}), 400
 
     if not user_id:
-        return jsonify({"success": False, "msg": "Employee not specified."}), 400
+        return jsonify({"success": False, "msg": "Student not specified."}), 400
 
     conn = get_db_connection()
     existing = conn.execute("SELECT id FROM attendance WHERE user_id=? AND date=?", (user_id, date_str)).fetchone()
@@ -1102,16 +1358,19 @@ def api_admin_add_employee():
         conn.close()
         return jsonify({
             "success": True,
-            "msg": f"Employee {name} added successfully.",
+            "msg": f"Student {name} added successfully.",
             "generated_password": gen_password
         })
     except Exception:
         conn.close()
-        return jsonify({"success": False, "msg": "Employee ID or Email already exists."}), 400
+        return jsonify({"success": False, "msg": "Student ID or Email already exists."}), 400
 
 
 @app.route("/api/search_employees")
 def api_search_employees():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
     query = request.args.get('q', '').strip()
     if not query:
         return jsonify({"results": []})
@@ -1133,6 +1392,9 @@ def api_search_employees():
 
 @app.route("/api/attendance_feed")
 def api_attendance_feed():
+    if session.get("role") != "admin":
+        return jsonify({"error": "Unauthorized"}), 401
+
     today = datetime.now().strftime("%Y-%m-%d")
     conn = get_db_connection()
 
@@ -1229,4 +1491,7 @@ def api_send_test_email():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # debug=True previously hardcoded -- Flask's debugger (Werkzeug) exposes
+    # a remote code execution console on any unhandled exception, which must
+    # never be on outside local development. Set FLASK_DEBUG=1 to enable it.
+    app.run(debug=DEBUG_MODE)

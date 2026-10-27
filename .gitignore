@@ -9,3 +9,13 @@ instance/
 error.log
 install_log.txt
 .DS_Store
+.face_key
+.flask_secret_key
+.pytest_cache/
+
+# Auto-downloaded model assets (ArcFace ONNX, MediaPipe FaceLandmarker/
+# BlazeFace) -- large and/or re-fetched automatically on first run by
+# utils/face_utils.py and liveness/face_utils.py. Not the project's own
+# trained artifacts (those live in liveness/weights/ and ARE committed).
+models/
+liveness/weights/blaze_face_short_range.tflite

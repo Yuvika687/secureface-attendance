@@ -13,7 +13,7 @@
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-icon emerald"><i class="fa-solid fa-users"></i></div>
-            <span class="stat-title">Total Employees</span>
+            <span class="stat-title">Total Students</span>
         </div>
         <div class="stat-value">{{ total_emp }}</div>
     </div>
@@ -72,7 +72,7 @@
         </div>
         <div class="glass-card-body" style="padding:0;">
             <table>
-                <thead><tr><th>Employee</th><th>Department</th><th>Late Days</th></tr></thead>
+                <thead><tr><th>Student</th><th>Department</th><th>Late Days</th></tr></thead>
                 <tbody>
                     {% for emp in top_late %}
                     <tr>
@@ -103,7 +103,7 @@
         </div>
         <div class="glass-card-body" style="padding:0;">
             <table>
-                <thead><tr><th>Employee</th><th>Department</th><th>Present Days</th></tr></thead>
+                <thead><tr><th>Student</th><th>Department</th><th>Present Days</th></tr></thead>
                 <tbody>
                     {% for emp in top_punctual %}
                     <tr>

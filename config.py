@@ -1,9 +1,24 @@
 import os
+import secrets
 from cryptography.fernet import Fernet
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "smartface_super_secret_key_change_in_prod")
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+    # Flask secret key — no hardcoded fallback string in source. If
+    # SECRET_KEY isn't set in the environment, generate one and persist it
+    # locally (same pattern as FACE_ENCRYPTION_KEY below) so sessions survive
+    # a restart; in production, set SECRET_KEY explicitly via environment.
+    SECRET_KEY = os.environ.get("SECRET_KEY")
+    if not SECRET_KEY:
+        _secret_file = os.path.join(BASE_DIR, ".flask_secret_key")
+        if os.path.exists(_secret_file):
+            with open(_secret_file) as f:
+                SECRET_KEY = f.read().strip()
+        else:
+            SECRET_KEY = secrets.token_hex(32)
+            with open(_secret_file, "w") as f:
+                f.write(SECRET_KEY)
 
     # Database — auto-detect PostgreSQL (Neon) vs SQLite
     DATABASE_URL = os.environ.get("DATABASE_URL")  # Neon PostgreSQL URL

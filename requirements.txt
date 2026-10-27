@@ -1,4 +1,5 @@
 Flask
+Flask-WTF
 opencv-python-headless
 numpy
 Pillow
@@ -6,5 +7,14 @@ APScheduler
 cryptography
 gunicorn
 psycopg2-binary
-mediapipe>=0.10.14
+# Pinned exactly (not >=0.10.14): mediapipe>=0.10.31 crashes with
+# "Check failed: service_ Service is unavailable" on Apple M-series + Metal 4
+# -- confirmed in anti_spoof_attendance, the project this liveness model and
+# BlazeFace detector are reused from. 0.10.30 is the last version with a
+# working Metal path on this hardware.
+mediapipe==0.10.30
 onnxruntime
+torch>=2.1.0
+torchvision>=0.16.0
+dnspython
+pytest

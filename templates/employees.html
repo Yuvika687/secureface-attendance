@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% block title %}Employees - Smart Attendance AI{% endblock %}
-{% block page_title %}Employee Directory{% endblock %}
+{% block title %}Students - Smart Attendance AI{% endblock %}
+{% block page_title %}Student Directory{% endblock %}
 {% block page_subtitle %}Manage active personnel and biometric registrations{% endblock %}
 
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.75rem;">
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-        <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">{{ employees|length }} Employees</span>
+        <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">{{ employees|length }} Students</span>
         {% for dept in dept_stats %}
         <span style="padding:3px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; font-size:0.68rem; font-weight:600; color:var(--text-muted);">
             {{ dept['department'] }}: {{ dept['count'] }}
@@ -16,10 +16,10 @@
     <div style="display:flex; gap:0.65rem; align-items:center;">
         <div class="search-bar" style="min-width:180px;">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="empSearch" placeholder="Search employees..." oninput="filterEmployees()">
+            <input type="text" id="empSearch" placeholder="Search students..." oninput="filterEmployees()">
         </div>
         <button onclick="openAddModal()" style="background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; font-weight:700; padding:0.45rem 1.15rem; border-radius:10px; border:none; font-size:0.8rem; display:flex; align-items:center; gap:0.4rem; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 12px rgba(16,185,129,0.2); white-space:nowrap; font-family:inherit;">
-            <i class="fa-solid fa-user-plus"></i> Add Employee
+            <i class="fa-solid fa-user-plus"></i> Add Student
         </button>
     </div>
 </div>
@@ -28,7 +28,7 @@
     <table id="empTable">
         <thead>
             <tr>
-                <th>Employee</th>
+                <th>Student</th>
                 <th>Network ID</th>
                 <th>Contact</th>
                 <th>Department</th>
@@ -67,7 +67,8 @@
                     {% endif %}
                 </td>
                 <td>
-                    <form method="POST" action="{{ url_for('manage_employees') }}" style="display:inline;" onsubmit="return confirm('Delete this employee and all their data? This cannot be undone.');">
+                    <form method="POST" action="{{ url_for('manage_employees') }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their data? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="user_id" value="{{ emp['id'] }}">
                         <button type="submit" class="btn-sm" style="background:rgba(244,63,94,0.06); border-color:rgba(244,63,94,0.12); color:var(--accent-rose);">
@@ -80,7 +81,7 @@
             <tr>
                 <td colspan="6" style="text-align:center; padding:3rem; color:var(--text-muted);">
                     <i class="fa-solid fa-users-slash" style="font-size:1.5rem; margin-bottom:0.5rem; display:block; opacity:0.3;"></i>
-                    No employees in the system yet.
+                    No students in the system yet.
                 </td>
             </tr>
             {% endfor %}
@@ -92,14 +93,14 @@
 <div id="addEmpModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(10px); z-index:100; align-items:center; justify-content:center;">
     <div class="glass-card" style="width:90%; max-width:500px;">
         <div class="glass-card-header">
-            <span class="glass-card-title"><i class="fa-solid fa-user-plus"></i> Add New Employee</span>
+            <span class="glass-card-title"><i class="fa-solid fa-user-plus"></i> Add New Student</span>
             <button onclick="closeAddModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.1rem;"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="glass-card-body">
             <form id="addEmpForm" style="display:flex; flex-direction:column; gap:0.75rem;">
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.65rem;">
                     <div>
-                        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Employee ID</label>
+                        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Student ID</label>
                         <input type="text" id="addEmpId" class="form-control" required placeholder="EMP001" maxlength="15" style="width:100%; text-transform:uppercase;" oninput="this.value=this.value.replace(/[^A-Za-z0-9\-]/g,'').toUpperCase()">
                     </div>
                     <div>
@@ -129,17 +130,17 @@
                 <div id="addResult" style="display:none;"></div>
 
                 <button type="button" class="btn-primary" id="addEmpBtn" onclick="submitAddEmployee()" style="margin-top:0.25rem;">
-                    <i class="fa-solid fa-plus"></i> Create Employee
+                    <i class="fa-solid fa-plus"></i> Create Student
                 </button>
             </form>
 
             <!-- Generated Password Display (shown after success) -->
             <div id="genPwSection" style="display:none; margin-top:1rem; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15); border-radius:10px; padding:1rem;">
                 <div style="font-size:0.72rem; font-weight:700; color:var(--accent-emerald); margin-bottom:0.5rem;">
-                    <i class="fa-solid fa-circle-check"></i> Employee Created Successfully!
+                    <i class="fa-solid fa-circle-check"></i> Student Created Successfully!
                 </div>
                 <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:0.4rem;">
-                    Share this temporary password with the employee. They can change it after login.
+                    Share this temporary password with the student. They can change it after login.
                 </div>
                 <div style="display:flex; align-items:center; gap:0.5rem; background:rgba(0,0,0,0.3); border-radius:8px; padding:0.55rem 0.85rem;">
                     <code id="genPwValue" style="flex:1; font-size:0.85rem; color:var(--accent-cyan); font-weight:700; letter-spacing:1px;"></code>
@@ -187,7 +188,7 @@ function submitAddEmployee() {
     const dept = document.getElementById('addDept').value;
 
     // Client-side checks
-    if (!empId || empId.length < 3) { showAddResult('Employee ID must be at least 3 characters.', false); return; }
+    if (!empId || empId.length < 3) { showAddResult('Student ID must be at least 3 characters.', false); return; }
     if (!name || name.length < 2) { showAddResult('Name must be at least 2 characters.', false); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { showAddResult('Invalid email format.', false); return; }
     if (!phone || phone.length < 10) { showAddResult('Phone must be at least 10 digits.', false); return; }
@@ -203,7 +204,7 @@ function submitAddEmployee() {
     .then(r => r.json())
     .then(data => {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-plus"></i> Create Employee';
+        btn.innerHTML = '<i class="fa-solid fa-plus"></i> Create Student';
 
         if (data.success) {
             showAddResult(data.msg, true);
@@ -216,7 +217,7 @@ function submitAddEmployee() {
     })
     .catch(() => {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-plus"></i> Create Employee';
+        btn.innerHTML = '<i class="fa-solid fa-plus"></i> Create Student';
         showAddResult('Network error. Please try again.', false);
     });
 }

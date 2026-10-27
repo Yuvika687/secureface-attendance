@@ -21,6 +21,7 @@
                 </div>
                 {% endif %}
                 <form method="POST" enctype="multipart/form-data" id="photoForm" style="position:absolute; bottom:-5px; right:-5px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="upload_photo">
                     <label style="width:28px; height:28px; border-radius:50%; background:var(--accent-emerald); display:flex; align-items:center; justify-content:center; cursor:pointer; border:2px solid var(--bg-dark); box-shadow:0 2px 8px rgba(0,0,0,0.3);">
                         <i class="fa-solid fa-camera" style="font-size:0.6rem; color:#fff;"></i>
@@ -67,6 +68,7 @@
             </div>
             <div class="glass-card-body">
                 <form method="POST" style="display:flex; flex-direction:column; gap:0.8rem;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="update_info">
                     <div>
                         <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.3rem;">Full Name</label>
@@ -86,7 +88,7 @@
                     </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
                         <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:0.55rem;">
-                            <div style="font-size:0.58rem; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Employee ID</div>
+                            <div style="font-size:0.58rem; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Student ID</div>
                             <div style="font-size:0.72rem; color:var(--text-secondary); font-family:monospace;">{{ user['employee_id'] }}</div>
                         </div>
                         <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:0.55rem;">
@@ -108,6 +110,7 @@
             </div>
             <div class="glass-card-body">
                 <form method="POST" id="pwForm" style="display:flex; flex-direction:column; gap:0.8rem;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="change_password">
                     <div>
                         <label style="display:block; font-size:0.72rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.3rem;">Current Password</label>
