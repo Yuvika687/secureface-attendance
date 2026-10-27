@@ -1,0 +1,10 @@
+Flask
+opencv-python-headless
+numpy
+Pillow
+APScheduler
+cryptography
+gunicorn
+psycopg2-binary
+mediapipe>=0.10.14
+onnxruntime

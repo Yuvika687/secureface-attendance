@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Scanner | Face ID</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <style>
+        :root {
+            --primary-glow: rgba(56, 189, 248, 0.5);
+            --success-glow: rgba(52, 211, 153, 0.6);
+            --danger-glow: rgba(248, 113, 113, 0.6);
+            --glass-bg: rgba(10, 14, 26, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body, html {
+            width: 100%; height: 100%;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        #video-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+        
+        #scanVideo {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            transform: scaleX(-1);
+            filter: contrast(1.08) brightness(0.92) saturate(1.15);
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 35%, rgba(0,0,0,0.85) 100%);
+            z-index: 2; pointer-events: none;
+        }
+
+        .top-nav {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 25px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .logo {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 1.35rem; font-weight: 700; letter-spacing: 0.5px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .logo i { font-size: 1.5rem; color: #10b981; }
+
+        .nav-btns { display: flex; gap: 0.75rem; }
+
+        .auth-btn {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            padding: 10px 22px;
+            border-radius: 12px;
+            color: #fff;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.88rem;
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .auth-btn:hover {
+            background: rgba(255,255,255,0.08);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        /* Target Reticle */
+        .target-container {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px; height: 500px;
+            z-index: 5;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        .bracket {
+            position: absolute;
+            width: 45px; height: 45px;
+            border-color: #10b981;
+            border-style: solid;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+            border-radius: 10px;
+        }
+        .tl { top:0; left:0; border-width: 3px 0 0 3px; }
+        .tr { top:0; right:0; border-width: 3px 3px 0 0; }
+        .bl { bottom:0; left:0; border-width: 0 0 3px 3px; }
+        .br { bottom:0; right:0; border-width: 0 3px 3px 0; }
+
+        .scan-laser {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 100%;
+            background: linear-gradient(180deg, transparent, rgba(16, 185, 129, 0.15) 50%, rgba(16, 185, 129, 0.4) 95%, #10b981 100%);
+            clip-path: inset(0 0 100% 0);
+            animation: scan 2.5s infinite linear;
+            z-index: 6;
+            border-radius: 10px;
+            display: none;
+        }
+        @keyframes scan {
+            0% { clip-path: inset(0 0 100% 0); }
+            50% { clip-path: inset(0 0 0 0); }
+            100% { clip-path: inset(100% 0 0 0); }
+        }
+
+        .target-container.scanning .scan-laser { display: block; }
+        
+        .target-container.success .bracket { 
+            border-color: #34d399; box-shadow: 0 0 30px var(--success-glow);
+            transform: scale(1.05); border-radius: 18px;
+        }
+        .target-container.alert .bracket { 
+            border-color: #f87171; box-shadow: 0 0 30px var(--danger-glow);
+            transform: scale(0.95);
+        }
+
+        /* Status Panel */
+        .status-panel {
+            position: absolute;
+            bottom: 7%; left: 50%;
+            transform: translateX(-50%);
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            padding: 18px 35px;
+            border-radius: 18px;
+            text-align: center;
+            z-index: 10;
+            min-width: 300px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .status-panel.success { border-color: #34d399; background: rgba(6, 78, 59, 0.6); }
+        .status-panel.error { border-color: #f87171; background: rgba(127, 29, 29, 0.6); animation: shake 0.5s; }
+
+        .status-title { font-size: 1.45rem; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.3px; }
+        .status-desc { font-size: 0.88rem; color: #94a3b8; font-weight: 400; }
+        
+        /* Confidence & Score Meter */
+        .meter-row {
+            display: flex; gap: 1rem; margin-top: 10px; justify-content: center; flex-wrap: wrap;
+        }
+        .meter {
+            display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600; color: #64748b;
+        }
+        .meter-bar {
+            width: 60px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
+        }
+        .meter-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+        .meter-fill.green { background: #10b981; }
+        .meter-fill.yellow { background: #f59e0b; }
+        .meter-fill.red { background: #f43f5e; }
+
+        /* Debug Overlay */
+        .debug-panel {
+            position: absolute;
+            top: 100px; left: 20px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 12px 16px;
+            border-radius: 10px;
+            z-index: 15;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 0.68rem;
+            color: #64748b;
+            line-height: 1.6;
+            min-width: 180px;
+            display: none;
+        }
+        .debug-panel.active { display: block; }
+        .debug-panel .val { color: #10b981; font-weight: 700; }
+        .debug-panel .fail { color: #f43f5e; }
+        .debug-panel .warn { color: #f59e0b; }
+        .debug-label { color: #475569; }
+
+        /* Frame counter */
+        .frame-counter {
+            position: absolute;
+            top: 100px; right: 20px;
+            background: rgba(0,0,0,0.5);
+            padding: 6px 12px;
+            border-radius: 8px;
+            z-index: 15;
+            font-size: 0.7rem;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(-50%); }
+            25% { transform: translateX(-52%); }
+            50% { transform: translateX(-48%); }
+            75% { transform: translateX(-52%); }
+        }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            100% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
+        }
+
+        .blink-prompt {
+            animation: pulse-ring 1.2s infinite;
+            border-radius: 18px;
+        }
+
+        @media (max-width: 768px) {
+            .target-container { width: 260px; height: 340px; }
+            .top-nav { padding: 15px 20px; flex-direction: column; gap: 12px; }
+            .status-panel { bottom: 4%; padding: 14px 22px; min-width: 260px;}
+            .debug-panel { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="scanVideo" autoplay muted playsinline></video>
+        <div class="vignette"></div>
+    </div>
+
+    <div class="top-nav">
+        <div class="logo">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>SmartFace AI</span>
+        </div>
+        <div class="nav-btns">
+            <a href="{{ url_for('login') }}" class="auth-btn">
+                <i class="fa-solid fa-user"></i> Employee Login
+            </a>
+            <a href="{{ url_for('admin_login') }}" class="auth-btn" style="border-color:rgba(139,92,246,0.2);">
+                <i class="fa-solid fa-shield-halved" style="color:#8b5cf6;"></i> Admin
+            </a>
+        </div>
+    </div>
+
+    <!-- Debug overlay (toggle with 'D' key) -->
+    <div class="debug-panel" id="debugPanel">
+        <div><span class="debug-label">Confidence:</span> <span id="dbgConf" class="val">—</span></div>
+        <div><span class="debug-label">Anti-Spoof:</span> <span id="dbgSpoof" class="val">—</span></div>
+        <div><span class="debug-label">EAR:</span> <span id="dbgEar" class="val">—</span></div>
+        <div><span class="debug-label">Eyes:</span> <span id="dbgEyes" class="val">—</span></div>
+        <div><span class="debug-label">Depth:</span> <span id="dbgDist" class="val">—</span></div>
+        <div><span class="debug-label">State:</span> <span id="dbgState" class="val">—</span></div>
+        <div style="margin-top:6px; border-top:1px solid rgba(255,255,255,0.05); padding-top:6px;">
+            <span class="debug-label">API Time:</span> <span id="dbgLatency" class="val">—</span>
+        </div>
+    </div>
+
+    <div class="frame-counter" id="frameCounter">Frames: 0</div>
+
+    <div class="target-container" id="targetBox">
+        <div class="bracket tl"></div><div class="bracket tr"></div>
+        <div class="bracket bl"></div><div class="bracket br"></div>
+        <div class="scan-laser"></div>
+    </div>
+
+    <div class="status-panel" id="statusPanel">
+        <div class="status-title" id="sTitle">Awaiting Subject</div>
+        <div class="status-desc" id="sDesc">Please look directly at the camera</div>
+        <div class="meter-row" id="meterRow" style="display:none;">
+            <div class="meter">
+                <span>Confidence</span>
+                <div class="meter-bar"><div class="meter-fill green" id="confFill" style="width:0%;"></div></div>
+                <span id="confVal">0%</span>
+            </div>
+            <div class="meter">
+                <span>Anti-Spoof</span>
+                <div class="meter-bar"><div class="meter-fill green" id="spoofFill" style="width:0%;"></div></div>
+                <span id="spoofVal">0</span>
+            </div>
+            <div class="meter">
+                <span>Liveness</span>
+                <span id="blinkCounter" style="color:#f59e0b; font-weight:700;">BLINK</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", () => {
+        startCamera("scanVideo");
+
+        const targetBox = document.getElementById("targetBox");
+        const statusPanel = document.getElementById("statusPanel");
+        const sTitle = document.getElementById("sTitle");
+        const sDesc = document.getElementById("sDesc");
+        const vid = document.getElementById("scanVideo");
+        const meterRow = document.getElementById("meterRow");
+        const confFill = document.getElementById("confFill");
+        const confVal = document.getElementById("confVal");
+        const spoofFill = document.getElementById("spoofFill");
+        const spoofVal = document.getElementById("spoofVal");
+        const debugPanel = document.getElementById("debugPanel");
+        const frameCounter = document.getElementById("frameCounter");
+
+        let isProc = false;
+        let eyeWasClosed = false;
+        let blinkDetected = false;
+        let frameCount = 0;
+        let consecutiveRecognitions = 0;  // Track consecutive successful recognitions
+        let lastRecognizedUser = null;
+        const blinkCounter = document.getElementById('blinkCounter');
+
+        // Debug toggle with D key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'd' || e.key === 'D') {
+                debugPanel.classList.toggle('active');
+            }
+        });
+
+        function updateDebug(res) {
+            const lm = res.liveness_metrics || {};
+            document.getElementById('dbgConf').textContent = (res.confidence || 0) + '%';
+            document.getElementById('dbgSpoof').textContent = res.anti_spoof_score || 0;
+            document.getElementById('dbgEar').textContent = lm.ear !== undefined ? lm.ear.toFixed(3) : '—';
+            document.getElementById('dbgEyes').textContent = lm.eyes_closed !== undefined ? (lm.eyes_closed ? 'CLOSED' : 'OPEN') : '—';
+            document.getElementById('dbgDist').textContent = lm.depth_score !== undefined ? lm.depth_score : '—';
+            document.getElementById('dbgState').textContent = 
+                res.error ? 'ERROR' :
+                res.spoofing_detected ? 'SPOOF' :
+                res.recognized ? 'MATCHED' : 
+                res.face_found ? 'UNKNOWN' : 'NO FACE';
+            
+            // Color coding
+            const confEl = document.getElementById('dbgConf');
+            confEl.className = (res.confidence || 0) > 50 ? 'val' : (res.confidence || 0) > 20 ? 'warn' : 'fail';
+            const spoofEl = document.getElementById('dbgSpoof');
+            spoofEl.className = (res.anti_spoof_score || 0) > 45 ? 'val' : (res.anti_spoof_score || 0) > 25 ? 'warn' : 'fail';
+        }
+
+        function updateMeters(conf, spoof) {
+            meterRow.style.display = 'flex';
+            confFill.style.width = conf + '%';
+            confVal.innerText = conf + '%';
+            confFill.className = 'meter-fill ' + (conf > 60 ? 'green' : conf > 30 ? 'yellow' : 'red');
+            
+            spoofFill.style.width = spoof + '%';
+            spoofVal.innerText = spoof;
+            spoofFill.className = 'meter-fill ' + (spoof > 45 ? 'green' : spoof > 25 ? 'yellow' : 'red');
+            
+            blinkCounter.innerText = blinkDetected ? "✓ LIVE" : "LIVE";
+            blinkCounter.style.color = blinkDetected ? '#10b981' : '#f59e0b';
+        }
+
+        function setCamStatus(title, desc, state) {
+            sTitle.innerHTML = title;
+            sDesc.innerHTML = desc;
+            
+            targetBox.className = "target-container";
+            statusPanel.className = "status-panel";
+
+            if (state === 'scanning') {
+                targetBox.classList.add("scanning");
+            } else if (state === 'blink') {
+                targetBox.classList.add("scanning");
+                statusPanel.classList.add("blink-prompt");
+            } else if (state === 'success') {
+                targetBox.classList.add("success");
+                statusPanel.classList.add("success");
+            } else if (state === 'alert' || state === 'unregistered') {
+                targetBox.classList.add("alert");
+                statusPanel.classList.add("error");
+            } else {
+                meterRow.style.display = 'none';
+            }
+        }
+
+        let consecutiveErrors = 0;
+        let coldStartTimer = null;
+        let coldStartSeconds = 0;
+
+        async function engine() {
+            if(!isProc && vid.readyState === 4) {
+                isProc = true;
+                frameCount++;
+                frameCounter.textContent = `Frames: ${frameCount}`;
+                
+                const b64 = captureFrame("scanVideo");
+                if(!b64) { isProc = false; setTimeout(engine, 150); return; }
+
+                const t0 = performance.now();
+
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout (local)
+
+                    const req = await fetch("{{ url_for('api_recognize_face') }}", {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({image:b64, liveness_verified: blinkDetected}),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+
+                    const res = await req.json();
+                    consecutiveErrors = 0; // Reset on success
+                    if (coldStartTimer) { clearInterval(coldStartTimer); coldStartTimer = null; }
+
+                    const latency = Math.round(performance.now() - t0);
+                    document.getElementById('dbgLatency').textContent = latency + 'ms';
+                    
+                    updateDebug(res);
+
+                    if (res.confidence !== undefined || res.anti_spoof_score !== undefined) {
+                        updateMeters(res.confidence || 0, res.anti_spoof_score || 0);
+                    }
+
+                    // Handle API error
+                    if (res.error) {
+                        setCamStatus(
+                            '<i class="fa-solid fa-exclamation-triangle" style="color:#f59e0b;"></i> Engine Error',
+                            `<span style="color:#f87171;">${res.msg || 'Recognition engine failed'}</span>`,
+                            "alert"
+                        );
+                    } else if (res.multi_face) {
+                        setCamStatus("Multiple Faces", "Only one person at a time please", "alert");
+                        consecutiveRecognitions = 0;
+                        lastRecognizedUser = null;
+                    } else if(res.spoofing_detected) {
+                        setCamStatus("⚠️ Spoof Detected", res.msg || "Live presence required.", "alert");
+                        eyeWasClosed = false; blinkDetected = false;
+                        consecutiveRecognitions = 0;
+                        lastRecognizedUser = null;
+                    } else if(res.recognized) {
+                        if (res.user === lastRecognizedUser) {
+                            consecutiveRecognitions++;
+                        } else {
+                            consecutiveRecognitions = 1;
+                            lastRecognizedUser = res.user;
+                        }
+
+                        let metrics = res.liveness_metrics || {};
+                        let challenge = res.challenge || 'blink';
+
+                        // Track challenge-specific conditions
+                        if (challenge === 'blink') {
+                            if (!blinkDetected) {
+                                if (metrics.eyes_closed && !eyeWasClosed) {
+                                    eyeWasClosed = true;
+                                } else if (!metrics.eyes_closed && eyeWasClosed) {
+                                    blinkDetected = true;
+                                    eyeWasClosed = false;
+                                }
+                            }
+                        } else if (challenge === 'turn_left') {
+                            if (metrics.head_yaw < -0.12) {
+                                blinkDetected = true; // reuse flag for "challenge done"
+                            }
+                        } else if (challenge === 'turn_right') {
+                            if (metrics.head_yaw > 0.12) {
+                                blinkDetected = true;
+                            }
+                        }
+
+                        if (res.success) {
+                            let initials = res.user.substring(0, 2).toUpperCase();
+                            let avatar = `<div style="width:56px; height:56px; background:linear-gradient(135deg, #10b981, #06b6d4); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:800; color:#fff; border:3px solid #fff; box-shadow:0 0 25px rgba(16,185,129,0.6); margin:0 auto 10px;">${initials}</div>`;
+                            setCamStatus(avatar + `<div>Access Granted</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}</span>`, "success");
+                            
+                            setTimeout(() => {
+                                eyeWasClosed = false; blinkDetected = false; isProc = false;
+                                consecutiveRecognitions = 0; lastRecognizedUser = null;
+                                setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                                setTimeout(engine, 500);
+                            }, 3500);
+                            return;
+                        } else if (!blinkDetected) {
+                            const confPct = res.confidence || 0;
+                            const challengeIcons = {
+                                'blink': '👁️ Blink your eyes',
+                                'turn_left': '↩️ Turn your head LEFT',
+                                'turn_right': '↪️ Turn your head RIGHT'
+                            };
+                            const prompt = challengeIcons[challenge] || 'Complete challenge';
+                            setCamStatus(
+                                `<i class="fa-solid fa-fingerprint"></i> ${res.user}`,
+                                `<span style="color:#f59e0b; font-weight:700;">` +
+                                `${prompt} (${confPct}%)</span>`,
+                                "blink"
+                            );
+                        }
+                    } else if(res.face_found) {
+                        setCamStatus(
+                            "Identity Unknown", 
+                            "⚠️ Please <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>Register</a> first.",
+                            "unregistered"
+                        );
+                        eyeWasClosed = false; blinkDetected = false;
+                        consecutiveRecognitions = 0; lastRecognizedUser = null;
+                        setTimeout(() => {
+                            isProc = false;
+                            setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                            setTimeout(engine, 500);
+                        }, 2500);
+                        return;
+                    } else {
+                        setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                        eyeWasClosed = false; blinkDetected = false;
+                        consecutiveRecognitions = 0; lastRecognizedUser = null;
+                    }
+                } catch(e) {
+                    consecutiveErrors++;
+                    console.warn(`[Scanner] API error #${consecutiveErrors}:`, e.message);
+
+                    if (e.name === 'AbortError') {
+                        setCamStatus(
+                            '<i class="fa-solid fa-hourglass-half" style="color:#f59e0b;"></i> Processing...',
+                            '<span style="color:#94a3b8;">Free tier processing taking longer than expected...</span>',
+                            "scanning"
+                        );
+                        isProc = false;
+                        setTimeout(engine, 1000);
+                        return;
+                    }
+                    
+                    if (consecutiveErrors >= 2) {
+                        // The server may be returning 502s or struggling under load
+                        if (!coldStartTimer) {
+                            coldStartSeconds = 0;
+                            coldStartTimer = setInterval(() => {
+                                coldStartSeconds++;
+                                const dots = '.'.repeat((coldStartSeconds % 3) + 1);
+                                setCamStatus(
+                                    '<i class="fa-solid fa-server" style="color:#8b5cf6;"></i> Server Busy' + dots,
+                                    `<span style="color:#a78bfa;">API is taking time due to free tier limits — ${coldStartSeconds}s elapsed. Please wait.</span>`,
+                                    "scanning"
+                                );
+                            }, 1000);
+                        }
+                        // Back off: don't hammer the server, wait 3 seconds between retries
+                        isProc = false;
+                        setTimeout(engine, 3000);
+                        return;
+                    } else {
+                        setCamStatus(
+                            '<i class="fa-solid fa-wifi" style="color:#f59e0b;"></i> Connecting...',
+                            '<span style="color:#94a3b8;">Establishing connection to AI engine</span>',
+                            "scanning"
+                        );
+                    }
+                }
+                isProc = false;
+            }
+            setTimeout(engine, 150);
+        }
+        
+        // Start with a wake-up ping first, then initialize scanner
+        setTimeout(() => {
+            setCamStatus(
+                '<i class="fa-solid fa-microchip" style="color:#10b981;"></i> Initializing AI...',
+                'Connecting to recognition engine',
+                "scanning"
+            );
+            // Send a lightweight ping to wake the server
+            fetch("{{ url_for('api_recognize_face') }}", {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: ''})
+            }).catch(() => {});
+            
+            setTimeout(() => {
+                setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                engine();
+            }, 1500);
+        }, 600);
+    });
+    </script>
+</body>
+</html>
+

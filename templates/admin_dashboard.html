@@ -1,0 +1,357 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard - Smart Attendance AI{% endblock %}
+{% block page_title %}Command Center{% endblock %}
+{% block page_subtitle %}Real-time overview of your organization{% endblock %}
+
+{% block content %}
+<!-- STATS GRID -->
+<div class="stats-grid">
+    <div class="stat-card stat-card-emerald">
+        <div class="stat-icon-wrap"><i class="fa-solid fa-users"></i></div>
+        <div class="stat-content">
+            <div class="stat-label">Total Employees</div>
+            <div class="stat-number">{{ total_emp }}</div>
+        </div>
+        <div class="stat-badge neutral">Active</div>
+    </div>
+    <div class="stat-card stat-card-cyan">
+        <div class="stat-icon-wrap"><i class="fa-solid fa-user-check"></i></div>
+        <div class="stat-content">
+            <div class="stat-label">Present Today</div>
+            <div class="stat-number">{{ present_today }}</div>
+        </div>
+        <div class="stat-badge {% if present_trend > 0 %}positive{% elif present_trend < 0 %}negative{% else %}neutral{% endif %}">
+            {% if present_trend > 0 %}↑{% elif present_trend < 0 %}↓{% else %}–{% endif %} {{ present_trend|abs }}%
+        </div>
+    </div>
+    <div class="stat-card stat-card-rose">
+        <div class="stat-icon-wrap"><i class="fa-solid fa-user-xmark"></i></div>
+        <div class="stat-content">
+            <div class="stat-label">Absent Today</div>
+            <div class="stat-number">{{ absent_today }}</div>
+        </div>
+        <div class="stat-badge {% if absent_today == 0 %}positive{% else %}negative{% endif %}">
+            {{ attendance_rate }}% Rate
+        </div>
+    </div>
+    <div class="stat-card stat-card-gold">
+        <div class="stat-icon-wrap"><i class="fa-solid fa-clock"></i></div>
+        <div class="stat-content">
+            <div class="stat-label">Late Arrivals</div>
+            <div class="stat-number">{{ late_count }}</div>
+        </div>
+        <div class="stat-badge {% if late_trend > 0 %}negative{% elif late_trend < 0 %}positive{% else %}neutral{% endif %}">
+            {% if late_trend > 0 %}↑{% elif late_trend < 0 %}↓{% else %}–{% endif %} {{ late_trend|abs }}%
+        </div>
+    </div>
+</div>
+
+<!-- MAIN CONTENT GRID -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-top:0.85rem;">
+
+    <!-- LEFT: Weekly Chart -->
+    <div class="glass-card" style="grid-row:span 2;">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-chart-area" style="color:var(--accent-cyan);"></i> Weekly Attendance</span>
+            <span style="font-size:0.68rem; color:var(--text-muted);">Last 7 days</span>
+        </div>
+        <div class="glass-card-body" style="padding:0.75rem 1rem;">
+            <canvas id="weeklyChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- RIGHT: Quick Actions -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-bolt" style="color:var(--accent-gold);"></i> Quick Actions</span>
+        </div>
+        <div class="glass-card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:0.55rem;">
+            <button onclick="openManualEntry()" class="action-btn" style="--btn-color:#10b981;">
+                <i class="fa-solid fa-pen-to-square"></i>
+                <span>Manual Entry</span>
+            </button>
+            <a href="{{ url_for('manage_employees') }}" class="action-btn" style="--btn-color:#06b6d4; text-decoration:none;">
+                <i class="fa-solid fa-user-plus"></i>
+                <span>Add Employee</span>
+            </a>
+            <a href="{{ url_for('export_csv') }}" class="action-btn" style="--btn-color:#8b5cf6; text-decoration:none;">
+                <i class="fa-solid fa-file-csv"></i>
+                <span>Export CSV</span>
+            </a>
+            <a href="{{ url_for('settings') }}" class="action-btn" style="--btn-color:#f59e0b; text-decoration:none;">
+                <i class="fa-solid fa-gear"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- RIGHT: System Status -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-signal" style="color:var(--accent-emerald);"></i> System Status</span>
+            <span class="pulse-dot" style="background:var(--accent-emerald);"></span>
+        </div>
+        <div class="glass-card-body" id="sysStatusBody" style="display:flex; flex-direction:column; gap:0.4rem;">
+            <div class="sys-row"><span class="sys-label"><i class="fa-solid fa-camera" style="color:var(--accent-cyan);"></i> Camera</span><span class="sys-val loading">Checking...</span></div>
+            <div class="sys-row"><span class="sys-label"><i class="fa-solid fa-brain" style="color:var(--accent-purple);"></i> AI Engine</span><span class="sys-val loading">Checking...</span></div>
+            <div class="sys-row"><span class="sys-label"><i class="fa-solid fa-database" style="color:var(--accent-emerald);"></i> Database</span><span class="sys-val loading">Checking...</span></div>
+            <div class="sys-row"><span class="sys-label"><i class="fa-solid fa-envelope" style="color:var(--accent-gold);"></i> Email</span><span class="sys-val loading">Checking...</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- LIVE ATTENDANCE FEED -->
+<div class="glass-card" style="margin-top:0.85rem;">
+    <div class="glass-card-header">
+        <span class="glass-card-title"><i class="fa-solid fa-wave-pulse" style="color:var(--accent-emerald);"></i> Today's Activity Feed</span>
+        <span class="pulse-dot live-pulse" style="background:var(--accent-emerald);"></span>
+    </div>
+    <div class="glass-card-body" style="padding:0;">
+        {% if recent_attendance|length > 0 %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Employee</th><th>ID</th><th>Department</th><th>Time</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    {% for rec in recent_attendance %}
+                    <tr>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                {% if rec.profile_photo %}
+                                <img src="{{ url_for('static', filename='uploads/profiles/' + rec.profile_photo) }}" style="width:28px; height:28px; border-radius:50%; object-fit:cover; flex-shrink:0;">
+                                {% else %}
+                                <div class="feed-avatar">{{ rec.name[0:2] | upper }}</div>
+                                {% endif %}
+                                <span style="font-weight:600; font-size:0.82rem;">{{ rec.name }}</span>
+                            </div>
+                        </td>
+                        <td><code style="font-size:0.72rem; color:var(--accent-cyan);">{{ rec.employee_id }}</code></td>
+                        <td><span style="font-size:0.76rem; color:var(--text-secondary);">{{ rec.department }}</span></td>
+                        <td style="font-family:monospace; font-size:0.78rem; font-weight:600; color:var(--text-primary);">{{ rec.time }}</td>
+                        <td>
+                            <span class="status-badge {% if rec.status == 'Present' %}online{% elif rec.status == 'Late' %}late{% else %}offline{% endif %}">
+                                {{ rec.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+            <i class="fa-solid fa-inbox" style="font-size:1.8rem; opacity:0.3; margin-bottom:0.5rem; display:block;"></i>
+            <div style="font-size:0.85rem; font-weight:600;">No attendance records yet today</div>
+            <div style="font-size:0.72rem; margin-top:0.2rem;">Employees will appear here as they check in</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- MANUAL ENTRY MODAL -->
+<div id="manualEntryModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(12px); z-index:100; align-items:center; justify-content:center;">
+    <div class="glass-card" style="width:90%; max-width:420px;">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-pen-to-square"></i> Manual Attendance</span>
+            <button onclick="closeManualEntry()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.1rem;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="glass-card-body">
+            <form id="manualForm" style="display:flex; flex-direction:column; gap:0.75rem;">
+                <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Employee</label>
+                    <select id="manualEmpId" class="form-control" style="width:100%; appearance:none;">
+                        {% for emp in employees_list %}
+                        <option value="{{ emp.id }}" style="background:#0d1117;">{{ emp.name }} ({{ emp.employee_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.55rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Date</label>
+                        <input type="date" id="manualDate" class="form-control" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Status</label>
+                        <select id="manualStatus" class="form-control" style="width:100%; appearance:none;">
+                            <option value="Present" style="background:#0d1117;">Present</option>
+                            <option value="Late" style="background:#0d1117;">Late</option>
+                            <option value="Absent" style="background:#0d1117;">Absent</option>
+                            <option value="Leave" style="background:#0d1117;">Leave</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="manualResult" style="display:none;"></div>
+                <button type="button" onclick="submitManualEntry()" class="btn-primary" id="manualBtn">
+                    <i class="fa-solid fa-check"></i> Mark Attendance
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.action-btn {
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.35rem;
+    background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:12px;
+    padding:0.85rem 0.5rem; cursor:pointer; transition:all 0.25s; color:var(--text-primary); font-family:inherit;
+}
+.action-btn i { font-size:1.15rem; color:var(--btn-color); transition:transform 0.25s; }
+.action-btn span { font-size:0.7rem; font-weight:600; color:var(--text-secondary); }
+.action-btn:hover { background:rgba(255,255,255,0.04); border-color:var(--btn-color); transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.3); }
+.action-btn:hover i { transform:scale(1.15); }
+
+.sys-row { display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; }
+.sys-label { font-size:0.76rem; font-weight:500; color:var(--text-secondary); display:flex; align-items:center; gap:0.4rem; }
+.sys-label i { width:14px; text-align:center; font-size:0.7rem; }
+.sys-val { font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:6px; }
+.sys-val.loading { color:var(--text-muted); background:rgba(255,255,255,0.02); }
+.sys-val.ok { color:var(--accent-emerald); background:rgba(16,185,129,0.08); }
+.sys-val.warn { color:var(--accent-gold); background:rgba(245,158,11,0.08); }
+.sys-val.err { color:var(--accent-rose); background:rgba(244,63,94,0.08); }
+
+.pulse-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.live-pulse { animation:pulse-glow 2s infinite; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+// Weekly Chart
+const weeklyData = {{ weekly_data | tojson }};
+const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const totalEmp = {{ total_emp }};
+const labels = [];
+for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    labels.push(d.toLocaleDateString('en', { weekday: 'short', day: 'numeric' }));
+}
+
+new Chart(document.getElementById('weeklyChart'), {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Present',
+            data: weeklyData,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16,185,129,0.08)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointBackgroundColor: '#10b981',
+            pointBorderColor: '#0a0e1a',
+            pointBorderWidth: 2,
+            pointHoverRadius: 6
+        }, {
+            label: 'Total',
+            data: Array(7).fill(totalEmp),
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(10,14,26,0.95)',
+                borderColor: 'rgba(16,185,129,0.2)',
+                borderWidth: 1,
+                titleFont: { family: 'Inter', weight: '700' },
+                bodyFont: { family: 'Inter' },
+                padding: 12,
+                cornerRadius: 10
+            }
+        },
+        scales: {
+            x: {
+                grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+                ticks: { color: '#6e7681', font: { family: 'Inter', size: 11, weight: '500' } }
+            },
+            y: {
+                grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+                ticks: { color: '#6e7681', font: { family: 'Inter', size: 11 }, stepSize: 1 },
+                beginAtZero: true,
+                suggestedMax: Math.max(totalEmp, 5)
+            }
+        }
+    }
+});
+
+// System Status
+fetch('/api/system_status')
+    .then(r => r.json())
+    .then(data => {
+        const body = document.getElementById('sysStatusBody');
+        const items = [
+            { key: 'camera', icon: 'fa-camera', color: 'var(--accent-cyan)' },
+            { key: 'ai', icon: 'fa-brain', color: 'var(--accent-purple)' },
+            { key: 'database', icon: 'fa-database', color: 'var(--accent-emerald)' },
+            { key: 'email', icon: 'fa-envelope', color: 'var(--accent-gold)' }
+        ];
+        body.innerHTML = items.map(item => {
+            const d = data[item.key];
+            const cls = d.status === 'Healthy' || d.status === 'Online' || d.status === 'Active' || d.status === 'Enabled' ? 'ok' : d.status === 'Disabled' ? 'warn' : 'err';
+            return `<div class="sys-row"><span class="sys-label"><i class="fa-solid ${item.icon}" style="color:${item.color}"></i> ${item.key.charAt(0).toUpperCase() + item.key.slice(1)}</span><span class="sys-val ${cls}" title="${d.detail}">${d.status}</span></div>`;
+        }).join('');
+    });
+
+// Manual Entry
+function openManualEntry() {
+    document.getElementById('manualEntryModal').style.display = 'flex';
+    document.getElementById('manualDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('manualResult').style.display = 'none';
+}
+function closeManualEntry() { document.getElementById('manualEntryModal').style.display = 'none'; }
+
+function submitManualEntry() {
+    const btn = document.getElementById('manualBtn');
+    const userId = document.getElementById('manualEmpId').value;
+    const date = document.getElementById('manualDate').value;
+    const status = document.getElementById('manualStatus').value;
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+    fetch('/api/manual_attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, date: date, status: status, time: time })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Attendance';
+        const res = document.getElementById('manualResult');
+        res.style.display = 'block';
+        res.style.padding = '0.5rem';
+        res.style.borderRadius = '8px';
+        res.style.fontSize = '0.76rem';
+        res.style.fontWeight = '600';
+        if (data.success) {
+            res.style.background = 'rgba(16,185,129,0.08)'; res.style.color = '#10b981'; res.style.border = '1px solid rgba(16,185,129,0.2)';
+            res.textContent = data.msg;
+            showToast(data.msg, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            res.style.background = 'rgba(244,63,94,0.08)'; res.style.color = '#f43f5e'; res.style.border = '1px solid rgba(244,63,94,0.2)';
+            res.textContent = data.msg;
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Mark Attendance';
+    });
+}
+</script>
+{% endblock %}

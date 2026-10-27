@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+*.db
+*.sqlite3
+instance/
+error.log
+install_log.txt
+.DS_Store

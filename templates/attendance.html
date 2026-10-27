@@ -1,0 +1,15 @@
+<h2>Attendance Records</h2>
+
+<table border="1">
+<tr>
+<th>Name</th>
+<th>Date</th>
+</tr>
+
+{% for row in records %}
+<tr>
+<td>{{row.name}}</td>
+<td>{{row.date}}</td>
+</tr>
+{% endfor %}
+</table>
