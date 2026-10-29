@@ -186,6 +186,23 @@ def _init_sqlite():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- One row per scan-pipeline STAGE reached per request (deepest stage
+    -- only, deduped against the previous frame's stage for the continuous
+    -- states -- see app.py's _log_scan_event()). For reviewing a test
+    -- session after the fact: what happened, in order, with timestamps.
+    CREATE TABLE IF NOT EXISTS scan_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK(stage IN (
+            'NO_FACE', 'MULTI_FACE', 'FACE_MOVED', 'SPOOF', 'UNCERTAIN',
+            'RECOGNIZED', 'UNRECOGNIZED', 'CHALLENGE_PASSED',
+            'ATTENDANCE_MARKED', 'ALREADY_MARKED'
+        )),
+        user_id INTEGER,
+        detail TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Performance indexes for 500+ employee scale
     CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
@@ -193,6 +210,7 @@ def _init_sqlite():
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
     CREATE INDEX IF NOT EXISTS idx_liveness_events_created ON liveness_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_scan_events_created ON scan_events(created_at);
     """
 
     os.makedirs(os.path.dirname(Config.DATABASE_URI), exist_ok=True)

@@ -79,6 +79,24 @@ if not Config.USE_POSTGRES:
             conn.commit()
         except Exception:
             pass
+        try:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS scan_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    stage TEXT NOT NULL CHECK(stage IN (
+                        'NO_FACE', 'MULTI_FACE', 'FACE_MOVED', 'SPOOF', 'UNCERTAIN',
+                        'RECOGNIZED', 'UNRECOGNIZED', 'CHALLENGE_PASSED',
+                        'ATTENDANCE_MARKED', 'ALREADY_MARKED'
+                    )),
+                    user_id INTEGER,
+                    detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        except Exception:
+            pass
         for key, value in _DEFAULT_SETTINGS.items():
             try:
                 conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -179,6 +197,7 @@ def _reset_liveness_session():
     session.pop('recent_probs', None)
     session.pop('last_bbox', None)
     session.pop('last_logged_decision', None)
+    session.pop('last_logged_stage', None)
     session.pop('challenge_type', None)
     session.pop('challenge_user', None)
     session.pop('challenge_neutral_seen', None)
@@ -213,6 +232,37 @@ def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
     conn.execute(
         "INSERT INTO liveness_events (session_id, decision, p_spoof, user_id) VALUES (?, ?, ?, ?)",
         (sid, decision, round(float(p_spoof), 4), user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True):
+    """Writes one scan_events row for the pipeline STAGE reached this request
+    -- for reviewing a test session afterward (what happened, in order).
+
+    For the continuous per-frame states (NO_FACE/MULTI_FACE/SPOOF/UNCERTAIN/
+    RECOGNIZED/UNRECOGNIZED) dedup=True so a stage that repeats across many
+    frames logs once per CHANGE, not once per frame. One-shot transitions
+    (FACE_MOVED/CHALLENGE_PASSED/ATTENDANCE_MARKED/ALREADY_MARKED) always
+    log -- they're already rare by construction. A bare "LIVE" classification
+    is deliberately not logged as its own row here: in this pipeline LIVE
+    always leads straight into RECOGNIZED or UNRECOGNIZED (or MULTI_FACE) the
+    same request, so the deeper stage already implies it -- logging both
+    would double up every frame.
+
+    FACE_MOVED passes update_dedup_key=False so it doesn't disturb the dedup
+    baseline for the deeper stage logged right after it in the same request.
+    """
+    sid = _get_liveness_session_id()
+    if dedup and session.get('last_logged_stage') == stage:
+        return
+    if update_dedup_key:
+        session['last_logged_stage'] = stage
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO scan_events (session_id, stage, user_id, detail) VALUES (?, ?, ?, ?)",
+        (sid, stage, user_id, detail),
     )
     conn.commit()
     conn.close()
@@ -506,7 +556,56 @@ def admin_dashboard():
                            recent_attendance=recent_attendance,
                            weekly_data=weekly_data,
                            admin=admin_user,
-                           employees_list=employees_list)
+                           employees_list=employees_list,
+                           debug_mode=DEBUG_MODE)
+
+
+@app.route("/admin/dev/clear_today_attendance", methods=["POST"])
+def admin_dev_clear_today_attendance():
+    """Dev-only: deletes today's attendance rows so a tester can repeat the
+    scan flow without waiting for a new day (attendance is marked once per
+    day per user). Hard-disabled unless FLASK_DEBUG=1 (same flag that gates
+    Flask's own debug mode) -- never available outside local development,
+    regardless of who is logged in."""
+    if not DEBUG_MODE:
+        return jsonify({"success": False, "msg": "Dev tools are disabled outside local development."}), 403
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "msg": "Unauthorized"}), 401
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db_connection()
+    deleted = conn.execute("SELECT COUNT(*) FROM attendance WHERE date = ?", (today,)).fetchone()[0]
+    conn.execute("DELETE FROM attendance WHERE date = ?", (today,))
+    conn.commit()
+    conn.close()
+    flash(f"[DEV] Cleared {deleted} attendance record(s) for {today}.", "success")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/scan_log")
+def admin_scan_log():
+    """Admin-only review of the most recent scan-pipeline events, in order,
+    with timestamps -- for reviewing a live test session afterward. Each row
+    is the DEEPEST stage a given request reached (see _log_scan_event());
+    FACE_MOVED is an extra marker row, not a terminal stage. Shows the most
+    recent 300 rather than filtering by "today" -- created_at is SQLite's
+    CURRENT_TIMESTAMP (UTC), and comparing that to a local-time date string
+    would silently drop or duplicate rows near midnight."""
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT scan_events.id, scan_events.session_id, scan_events.stage,
+               scan_events.detail, scan_events.created_at,
+               users.name AS user_name, users.employee_id
+        FROM scan_events
+        LEFT JOIN users ON scan_events.user_id = users.id
+        ORDER BY scan_events.id DESC
+        LIMIT 300
+    ''').fetchall()
+    conn.close()
+    return render_template("scan_log.html", rows=rows)
 
 
 @app.route("/manage_employees", methods=["GET", "POST"])
@@ -986,6 +1085,7 @@ def api_recognize_face():
 
         if len(detections) == 0:
             _reset_liveness_session()
+            _log_scan_event("NO_FACE")
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
@@ -995,6 +1095,7 @@ def api_recognize_face():
 
         if len(detections) > 1:
             _reset_liveness_session()
+            _log_scan_event("MULTI_FACE")
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False,
@@ -1013,6 +1114,8 @@ def api_recognize_face():
         # nothing happened.
         prev_bbox = session.get('last_bbox')
         if _face_moved_too_much(prev_bbox, cur_bbox):
+            _log_scan_event("FACE_MOVED", dedup=False, update_dedup_key=False,
+                             detail=f"prev={prev_bbox} cur={cur_bbox}")
             _reset_liveness_session()
         session['last_bbox'] = cur_bbox
 
@@ -1022,6 +1125,7 @@ def api_recognize_face():
         # anti-spoofing entirely. ---
         crop = crop_face(frame, best)
         if crop is None or crop.size == 0:
+            _log_scan_event("NO_FACE", detail="face too close to the frame edge")
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
@@ -1048,12 +1152,14 @@ def api_recognize_face():
             session.pop('challenge_neutral_seen', None)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             if decision == "SPOOF":
+                _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}")
                 return jsonify({
                     "success": False, "recognized": False,
                     "state": "SPOOF", "spoofing_detected": True,
                     "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
                     "msg": "Spoofing detected — live presence required.",
                 })
+            _log_scan_event("UNCERTAIN", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}")
             return jsonify({
                 "success": False, "recognized": False,
                 "state": "UNCERTAIN",
@@ -1071,6 +1177,7 @@ def api_recognize_face():
         timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
 
         if multi_face:
+            _log_scan_event("MULTI_FACE")
             _reset_liveness_session()
             return jsonify({
                 "success": False, "recognized": False,
@@ -1119,6 +1226,7 @@ def api_recognize_face():
                     'turn_left': '↩️ Turn your head LEFT slowly',
                     'turn_right': '↪️ Turn your head RIGHT slowly',
                 }
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"awaiting challenge={challenge}")
                 return jsonify({
                     "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
@@ -1149,6 +1257,10 @@ def api_recognize_face():
                              (user_id, date_str, time_str, status, 'Face Recognition'))
                 conn.commit()
                 conn.close()
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
+                                 dedup=False, update_dedup_key=False)
+                _log_scan_event("ATTENDANCE_MARKED", user_id=user_id, detail=f"status={status} time={time_str}",
+                                 dedup=False)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Access Granted. Attendance verified for {user_info['name']}",
@@ -1161,6 +1273,10 @@ def api_recognize_face():
                 })
             else:
                 conn.close()
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
+                                 dedup=False, update_dedup_key=False)
+                _log_scan_event("ALREADY_MARKED", user_id=user_id, detail="already checked in today",
+                                 dedup=False)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Welcome back, {user_info['name']}. Already checked in today.",
@@ -1173,6 +1289,7 @@ def api_recognize_face():
 
         # LIVE, face found, but not recognized (either unregistered, or
         # fewer than min_face_samples enrolled -- see register_face()).
+        _log_scan_event("UNRECOGNIZED")
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,

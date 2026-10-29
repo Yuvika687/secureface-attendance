@@ -4,6 +4,19 @@
 {% block page_subtitle %}Real-time overview of your organization{% endblock %}
 
 {% block content %}
+{% if debug_mode %}
+<div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; padding:0.6rem 0.9rem; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); border-radius:10px;">
+    <span style="font-size:0.72rem; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.04em;">Dev Tools (local only)</span>
+    <a href="{{ url_for('admin_scan_log') }}" style="font-size:0.78rem; color:var(--text-secondary); text-decoration:underline;">View scan event log</a>
+    <form method="POST" action="{{ url_for('admin_dev_clear_today_attendance') }}" style="display:inline; margin:0;"
+          onsubmit="return confirm('Delete all of today\'s attendance records? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" style="font-size:0.78rem; font-weight:600; color:#f59e0b; background:none; border:1px solid rgba(245,158,11,0.4); border-radius:6px; padding:0.25rem 0.7rem; cursor:pointer; font-family:inherit;">
+            Clear today's attendance
+        </button>
+    </form>
+</div>
+{% endif %}
 <!-- STATS GRID -->
 <div class="stats-grid">
     <div class="stat-card stat-card-emerald">

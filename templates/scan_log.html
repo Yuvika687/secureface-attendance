@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Scan Log - Smart Attendance AI{% endblock %}
+{% block page_title %}Scan Event Log{% endblock %}
+{% block page_subtitle %}Every stage reached by the live pipeline, most recent first — for reviewing a test session{% endblock %}
+
+{% block content %}
+<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">
+    Showing the most recent {{ rows|length }} scan events (max 300). Each row is the deepest
+    pipeline stage a single camera frame/request reached: NO_FACE, MULTI_FACE, FACE_MOVED
+    (same-face consistency reset), SPOOF, UNCERTAIN, RECOGNIZED (identity matched, challenge
+    pending), UNRECOGNIZED (live but no match), CHALLENGE_PASSED, ATTENDANCE_MARKED, or
+    ALREADY_MARKED. Repeated identical states across consecutive frames are logged once, not
+    once per frame.
+</p>
+
+<div class="table-panel">
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Stage</th>
+                <th>Session</th>
+                <th>User</th>
+                <th>Detail</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td style="white-space:nowrap;">{{ row['created_at'] }}</td>
+                <td style="font-weight:700;">{{ row['stage'] }}</td>
+                <td style="font-family:monospace; font-size:0.72rem;">{{ row['session_id'][:8] }}</td>
+                <td>{% if row['user_name'] %}{{ row['user_name'] }} ({{ row['employee_id'] }}){% endif %}</td>
+                <td style="font-size:0.75rem; color:var(--text-muted);">{{ row['detail'] or '' }}</td>
+            </tr>
+            {% endfor %}
+            {% if not rows %}
+            <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No scan events logged yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
