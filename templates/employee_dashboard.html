@@ -34,8 +34,8 @@
             <div class="stat-icon emerald"><i class="fa-solid fa-calendar-check"></i></div>
             <span class="stat-title">Days Present</span>
         </div>
-        <div class="stat-value">{{ chart_data.Present }}</div>
-        <div class="stat-trend"><span class="trend-badge up"><i class="fa-solid fa-check"></i></span> On Time</div>
+        <div class="stat-value">{{ days_present_total }}</div>
+        <div class="stat-trend"><span class="trend-badge neutral">{{ late_days }}</span> of which Late</div>
     </div>
     <div class="stat-card">
         <div class="stat-card-header">

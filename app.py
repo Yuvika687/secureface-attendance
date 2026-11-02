@@ -3,7 +3,6 @@ import io
 import csv
 import uuid
 import sqlite3
-import random
 import time
 import hashlib
 import math
@@ -179,6 +178,7 @@ def is_late(time_str):
 
 RECENT_PROBS_WINDOW = 5          # frames averaged for the smoothed P(spoof)
 FACE_MOVE_REJECT_RATIO = 0.6     # center displacement > 60% of face size => treat as a different physical subject
+CHALLENGE_TIMEOUT_SECONDS = 8    # max wait for one natural blink before silently restarting the attempt
 
 
 def _get_liveness_session_id():
@@ -209,7 +209,7 @@ def _reset_liveness_session():
     session.pop('last_logged_stage', None)
     session.pop('challenge_type', None)
     session.pop('challenge_user', None)
-    session.pop('challenge_neutral_seen', None)
+    session.pop('challenge_assigned_at', None)
 
 
 def _face_moved_too_much(prev_bbox, cur_bbox):
@@ -1011,6 +1011,11 @@ def employee_dashboard():
                            calendar_data=calendar_data,
                            greeting=greeting,
                            late_days=late_count,
+                           # A Late check-in is still a day you showed up --
+                           # "Days Present" should count Present + Late rows,
+                           # with "Late Arrivals" as the "of which" breakdown,
+                           # not a day excluded from Present entirely.
+                           days_present_total=present_count + late_count,
                            min_face_samples=int(get_setting('min_face_samples', '5')))
 
 
@@ -1110,9 +1115,22 @@ def api_recognize_face():
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
-                "state": "NO_FACE", "timings": timings,
-                "msg": "Waiting for valid subject...",
+                "state": "NO_FACE", "timings": timings, "face_box": None,
+                "msg": "Step into the frame.",
             })
+
+        # Largest detected face's box, in pixel coords of THIS frame -- sent
+        # to the frontend so it can draw a box at the real detection
+        # location (mirrored for the mirrored video preview) instead of a
+        # fixed decorative frame. Computed even in the multi-face case below
+        # so the UI still has something real to show.
+        best = max(detections, key=lambda d: d.width * d.height)
+        cur_bbox = [best.x, best.y, best.width, best.height]
+        frame_h, frame_w = frame.shape[:2]
+        face_box = {
+            "x": best.x, "y": best.y, "width": best.width, "height": best.height,
+            "frame_width": frame_w, "frame_height": frame_h,
+        }
 
         if len(detections) > 1:
             _reset_liveness_session()
@@ -1120,13 +1138,10 @@ def api_recognize_face():
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False,
-                "state": "MULTI_FACE", "timings": timings,
-                "msg": "Multiple faces detected. Only one person at a time.",
+                "state": "MULTI_FACE", "timings": timings, "face_box": face_box,
+                "msg": "Only one person at a time.",
                 "multi_face": True,
             })
-
-        best = max(detections, key=lambda d: d.width * d.height)
-        cur_bbox = [best.x, best.y, best.width, best.height]
 
         # Same-face consistency: an abrupt position jump between frames means
         # this is no longer the same physical subject that was mid-sequence
@@ -1150,8 +1165,8 @@ def api_recognize_face():
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
-                "state": "NO_FACE", "timings": timings,
-                "msg": "Face too close to the frame edge.",
+                "state": "NO_FACE", "timings": timings, "face_box": face_box,
+                "msg": "Step into the frame.",
             })
 
         t0 = time.perf_counter()
@@ -1172,13 +1187,15 @@ def api_recognize_face():
                 # briefly were (e.g. swapped to a photo mid-challenge).
                 session.pop('challenge_type', None)
                 session.pop('challenge_user', None)
-                session.pop('challenge_neutral_seen', None)
+                session.pop('challenge_assigned_at', None)
                 _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label)
                 return jsonify({
                     "success": False, "recognized": False,
                     "state": "SPOOF", "spoofing_detected": True,
-                    "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
-                    "msg": "Spoofing detected — live presence required.",
+                    "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings, "face_box": face_box,
+                    # Binary classifier -- it cannot tell photo/screen/phone
+                    # apart, so the message never claims a specific attack type.
+                    "msg": "Spoof detected — please use your real face.",
                 })
             # UNCERTAIN: reject + log + retry THIS frame only (decision #1)
             # -- deliberately does NOT clear the in-progress challenge.
@@ -1198,8 +1215,8 @@ def api_recognize_face():
             return jsonify({
                 "success": False, "recognized": False,
                 "state": "UNCERTAIN",
-                "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
-                "msg": "Hold still — checking again",
+                "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings, "face_box": face_box,
+                "msg": "Hold still — checking again.",
             })
 
         _log_liveness_event_if_changed("LIVE", smoothed_prob_spoof)
@@ -1216,8 +1233,8 @@ def api_recognize_face():
             _reset_liveness_session()
             return jsonify({
                 "success": False, "recognized": False,
-                "state": "MULTI_FACE", "timings": timings,
-                "msg": "Multiple faces detected. Only one person at a time.",
+                "state": "MULTI_FACE", "timings": timings, "face_box": face_box,
+                "msg": "Only one person at a time.",
                 "multi_face": True,
             })
 
@@ -1227,48 +1244,33 @@ def api_recognize_face():
             conn.close()
 
             if not user_info:
-                return jsonify({"success": False, "recognized": False, "state": "LIVE", "timings": timings, "msg": "User not found."})
+                return jsonify({"success": False, "recognized": False, "state": "LIVE", "timings": timings, "face_box": face_box, "msg": "User not found."})
 
-            # Liveness Challenge — RANDOM action to defeat video replay.
-            # Videos can fake blinks but can't predict random challenges.
-            # Unchanged from the original SmartFace logic.
-            challenge_types = ['blink', 'turn_left', 'turn_right']
+            # Silent natural-blink check (no visible instruction -- see the
+            # commit message / chat for the honest replay-attack tradeoff
+            # this involves vs. the previous random blink/turn_left/
+            # turn_right challenge). CHALLENGE_TIMEOUT_SECONDS bounds how
+            # long we wait for one natural blink before silently restarting
+            # the attempt clock, so a subject who isn't blinking (dry eyes,
+            # staring) doesn't get stuck forever.
             if 'challenge_type' not in session or session.get('challenge_user') != user_info['name']:
-                session['challenge_type'] = random.choice(challenge_types)
+                session['challenge_type'] = 'blink'
                 session['challenge_user'] = user_info['name']
-                session['challenge_neutral_seen'] = False
+                session['challenge_assigned_at'] = time.time()
+            elif time.time() - session.get('challenge_assigned_at', 0) > CHALLENGE_TIMEOUT_SECONDS:
+                session['challenge_assigned_at'] = time.time()
 
-            challenge = session['challenge_type']
-            head_yaw = liveness_metrics.get('head_yaw', 0)
-
-            challenge_passed = False
-            if challenge == 'blink' and liveness_verified:
-                challenge_passed = True
-            elif challenge == 'turn_left':
-                if abs(head_yaw) < 0.08:
-                    session['challenge_neutral_seen'] = True
-                if session.get('challenge_neutral_seen') and head_yaw < -0.12:
-                    challenge_passed = True
-            elif challenge == 'turn_right':
-                if abs(head_yaw) < 0.08:
-                    session['challenge_neutral_seen'] = True
-                if session.get('challenge_neutral_seen') and head_yaw > 0.12:
-                    challenge_passed = True
+            challenge_passed = bool(liveness_verified)
 
             if not challenge_passed:
-                challenge_msgs = {
-                    'blink': '👁️ Blink your eyes to verify',
-                    'turn_left': '↩️ Turn your head LEFT slowly',
-                    'turn_right': '↪️ Turn your head RIGHT slowly',
-                }
-                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"awaiting challenge={challenge}", test_label=test_label)
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail="awaiting silent blink", test_label=test_label)
                 return jsonify({
                     "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
                     "p_spoof": round(smoothed_prob_spoof, 4),
-                    "confidence": confidence, "timings": timings,
-                    "challenge": challenge,
-                    "msg": f"{user_info['name']} — {challenge_msgs.get(challenge, 'Verify')}",
+                    "confidence": confidence, "timings": timings, "face_box": face_box,
+                    "challenge": "blink",
+                    "msg": "Scanning...",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -1277,7 +1279,7 @@ def api_recognize_face():
             # Challenge passed! Clear session
             session.pop('challenge_type', None)
             session.pop('challenge_user', None)
-            session.pop('challenge_neutral_seen', None)
+            session.pop('challenge_assigned_at', None)
 
             now = datetime.now()
             date_str = now.strftime("%Y-%m-%d")
@@ -1292,13 +1294,13 @@ def api_recognize_face():
                              (user_id, date_str, time_str, status, 'Face Recognition'))
                 conn.commit()
                 conn.close()
-                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
                                  dedup=False, update_dedup_key=False, test_label=test_label)
                 _log_scan_event("ATTENDANCE_MARKED", user_id=user_id, detail=f"status={status} time={time_str}",
                                  dedup=False, test_label=test_label)
                 return jsonify({
-                    "success": True, "recognized": True, "state": "LIVE",
-                    "msg": f"Access Granted. Attendance verified for {user_info['name']}",
+                    "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
+                    "msg": f"{user_info['name']} — attendance marked ({status}).",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -1308,13 +1310,13 @@ def api_recognize_face():
                 })
             else:
                 conn.close()
-                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
                                  dedup=False, update_dedup_key=False, test_label=test_label)
                 _log_scan_event("ALREADY_MARKED", user_id=user_id, detail="already checked in today",
                                  dedup=False, test_label=test_label)
                 return jsonify({
-                    "success": True, "recognized": True, "state": "LIVE",
-                    "msg": f"Welcome back, {user_info['name']}. Already checked in today.",
+                    "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
+                    "msg": f"{user_info['name']} — already checked in today.",
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -1329,8 +1331,8 @@ def api_recognize_face():
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,
             "p_spoof": round(smoothed_prob_spoof, 4),
-            "confidence": confidence, "timings": timings,
-            "msg": "Identity Unknown — Please register first",
+            "confidence": confidence, "timings": timings, "face_box": face_box,
+            "msg": "Face not recognized — please register first.",
         })
 
     except Exception as e:

@@ -98,6 +98,13 @@
             width: 400px; height: 500px;
             z-index: 5;
             display: flex; justify-content: center; align-items: center;
+            transition: left 0.12s linear, top 0.12s linear, width 0.12s linear, height 0.12s linear;
+        }
+        /* Driven by real detection coordinates (see updateFaceBox()) once a
+           face is found -- left/top/width/height are then set inline by JS
+           and this rule no longer applies. */
+        .target-container.tracking {
+            transform: none;
         }
 
         .bracket {
@@ -273,12 +280,12 @@
     <!-- Dev-only test-category label (FLASK_DEBUG=1 only). Purely descriptive --
          tags each scan_events row with what's being shown to the camera for this
          test run. Never read by the liveness/recognition pipeline. -->
-    <div style="position:absolute; top:100px; left:50%; transform:translateX(-50%); z-index:16;
+    <div style="position:absolute; bottom:12px; left:12px; z-index:16; max-width:140px;
                 background:rgba(0,0,0,0.75); backdrop-filter:blur(10px); border:1px solid rgba(245,158,11,0.3);
-                border-radius:10px; padding:8px 14px; font-family:'JetBrains Mono','Consolas',monospace;
-                font-size:0.68rem; color:#f59e0b; display:flex; align-items:center; gap:8px;">
+                border-radius:8px; padding:5px 8px; font-family:'JetBrains Mono','Consolas',monospace;
+                font-size:0.58rem; color:#f59e0b; display:flex; flex-direction:column; gap:3px;">
         <span style="font-weight:700;">TEST LABEL</span>
-        <select id="testLabelSelect" style="background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:3px 6px; font-family:inherit; font-size:0.68rem;">
+        <select id="testLabelSelect" style="background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:2px 4px; font-family:inherit; font-size:0.6rem; max-width:128px;">
             <option value="">(none)</option>
             <option value="real_face">Real face</option>
             <option value="real_face_masked">Real face (masked)</option>
@@ -290,7 +297,7 @@
             <option value="other">Other (custom)</option>
         </select>
         <input type="text" id="testLabelCustom" placeholder="custom label" maxlength="40"
-               style="display:none; background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:3px 6px; font-family:inherit; font-size:0.68rem; width:120px;">
+               style="display:none; background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:2px 4px; font-family:inherit; font-size:0.6rem; max-width:128px;">
     </div>
     <script>
         (function() {
@@ -323,7 +330,7 @@
     <!-- Debug overlay (toggle with 'D' key) -->
     <div class="debug-panel" id="debugPanel">
         <div><span class="debug-label">Confidence:</span> <span id="dbgConf" class="val">—</span></div>
-        <div><span class="debug-label">Anti-Spoof:</span> <span id="dbgSpoof" class="val">—</span></div>
+        <div><span class="debug-label">Liveness Score:</span> <span id="dbgSpoof" class="val">—</span></div>
         <div><span class="debug-label">EAR:</span> <span id="dbgEar" class="val">—</span></div>
         <div><span class="debug-label">Eyes:</span> <span id="dbgEyes" class="val">—</span></div>
         <div><span class="debug-label">Depth:</span> <span id="dbgDist" class="val">—</span></div>
@@ -342,8 +349,8 @@
     </div>
 
     <div class="status-panel" id="statusPanel">
-        <div class="status-title" id="sTitle">Awaiting Subject</div>
-        <div class="status-desc" id="sDesc">Please look directly at the camera</div>
+        <div class="status-title" id="sTitle">Step into the frame.</div>
+        <div class="status-desc" id="sDesc"></div>
         <div class="meter-row" id="meterRow" style="display:none;">
             <div class="meter">
                 <span>Confidence</span>
@@ -351,13 +358,9 @@
                 <span id="confVal">0%</span>
             </div>
             <div class="meter">
-                <span>Anti-Spoof</span>
+                <span>Liveness Score</span>
                 <div class="meter-bar"><div class="meter-fill green" id="spoofFill" style="width:0%;"></div></div>
                 <span id="spoofVal">0</span>
-            </div>
-            <div class="meter">
-                <span>Liveness</span>
-                <span id="blinkCounter" style="color:#f59e0b; font-weight:700;">BLINK</span>
             </div>
         </div>
     </div>
@@ -387,7 +390,6 @@
         let frameCount = 0;
         let consecutiveRecognitions = 0;  // Track consecutive successful recognitions
         let lastRecognizedUser = null;
-        const blinkCounter = document.getElementById('blinkCounter');
 
         // Debug toggle with D key
         document.addEventListener('keydown', (e) => {
@@ -428,9 +430,45 @@
             spoofFill.style.width = livenessScore + '%';
             spoofVal.innerText = livenessScore;
             spoofFill.className = 'meter-fill ' + (livenessScore > 70 ? 'green' : livenessScore > 40 ? 'yellow' : 'red');
+        }
 
-            blinkCounter.innerText = blinkDetected ? "✓ LIVE" : "LIVE";
-            blinkCounter.style.color = blinkDetected ? '#10b981' : '#f59e0b';
+        function updateFaceBox(faceBox) {
+            // Positions the real target box at the actual detected face
+            // location instead of a fixed decorative frame. The captured
+            // canvas frame (faceBox.frame_width/height) is a uniform scale
+            // of the video's native resolution, and the video is displayed
+            // with object-fit:contain (letterboxed) and mirrored via CSS
+            // scaleX(-1) -- so the box position must go through the same
+            // scale-to-native, scale-to-displayed, then mirror steps.
+            if (!faceBox) {
+                targetBox.classList.remove('tracking');
+                targetBox.style.left = '';
+                targetBox.style.top = '';
+                targetBox.style.width = '';
+                targetBox.style.height = '';
+                return;
+            }
+            const rect = vid.getBoundingClientRect();
+            const Vw = vid.videoWidth, Vh = vid.videoHeight;
+            if (!Vw || !Vh || !rect.width || !rect.height) return;
+
+            const scale = Math.min(rect.width / Vw, rect.height / Vh);
+            const dispW = Vw * scale, dispH = Vh * scale;
+            const offX = (rect.width - dispW) / 2, offY = (rect.height - dispH) / 2;
+
+            const toVideoScale = Vw / faceBox.frame_width;
+            const nx = faceBox.x * toVideoScale, ny = faceBox.y * toVideoScale;
+            const nw = faceBox.width * toVideoScale, nh = faceBox.height * toVideoScale;
+
+            const screenX = offX + nx * scale, screenY = offY + ny * scale;
+            const screenW = nw * scale, screenH = nh * scale;
+            const mirroredLeft = rect.width - screenX - screenW;
+
+            targetBox.classList.add('tracking');
+            targetBox.style.left = mirroredLeft + 'px';
+            targetBox.style.top = screenY + 'px';
+            targetBox.style.width = screenW + 'px';
+            targetBox.style.height = screenH + 'px';
         }
 
         function setCamStatus(title, desc, state) {
@@ -514,19 +552,26 @@
                             `<span style="color:#f87171;">${res.msg || 'Recognition engine failed'}</span>`,
                             "alert"
                         );
+                        updateFaceBox(null);
                     } else if (res.multi_face) {
-                        setCamStatus("Multiple Faces", "Only one person at a time please", "alert");
+                        setCamStatus("Multiple Faces", "Only one person at a time.", "alert");
+                        updateFaceBox(res.face_box || null);
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
                     } else if(res.spoofing_detected) {
-                        setCamStatus("⚠️ Spoof Detected", res.msg || "Live presence required.", "alert");
+                        setCamStatus("⚠️ Spoof Detected", res.msg || "Spoof detected — please use your real face.", "alert");
+                        updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
                     } else if(res.state === "UNCERTAIN") {
                         // Reject + log + retry, not a hard failure -- its own
                         // distinct color (blue), never styled as "alert".
-                        setCamStatus("Hold still — checking again", res.msg || "Re-checking liveness...", "uncertain");
+                        // Desc is intentionally blank: the title already
+                        // carries the one required message, and repeating it
+                        // in the desc was the literal on-screen duplicate.
+                        setCamStatus("Hold still — checking again.", "", "uncertain");
+                        updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
@@ -539,71 +584,67 @@
                         }
 
                         let metrics = res.liveness_metrics || {};
-                        let challenge = res.challenge || 'blink';
 
-                        // Track challenge-specific conditions
-                        if (challenge === 'blink') {
-                            if (!blinkDetected) {
-                                if (metrics.eyes_closed && !eyeWasClosed) {
-                                    eyeWasClosed = true;
-                                } else if (!metrics.eyes_closed && eyeWasClosed) {
-                                    blinkDetected = true;
-                                    eyeWasClosed = false;
-                                }
-                            }
-                        } else if (challenge === 'turn_left') {
-                            if (metrics.head_yaw < -0.12) {
-                                blinkDetected = true; // reuse flag for "challenge done"
-                            }
-                        } else if (challenge === 'turn_right') {
-                            if (metrics.head_yaw > 0.12) {
+                        // Silent natural-blink check -- no challenge type to
+                        // branch on anymore, just watch for one closed->open
+                        // eye transition (EAR from the server's real Face
+                        // Mesh reading, edge-detected client-side).
+                        if (!blinkDetected) {
+                            if (metrics.eyes_closed && !eyeWasClosed) {
+                                eyeWasClosed = true;
+                            } else if (!metrics.eyes_closed && eyeWasClosed) {
                                 blinkDetected = true;
+                                eyeWasClosed = false;
                             }
                         }
 
                         if (res.success) {
                             let initials = res.user.substring(0, 2).toUpperCase();
                             let avatar = `<div style="width:56px; height:56px; background:linear-gradient(135deg, #10b981, #06b6d4); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:800; color:#fff; border:3px solid #fff; box-shadow:0 0 25px rgba(16,185,129,0.6); margin:0 auto 10px;">${initials}</div>`;
-                            setCamStatus(avatar + `<div>Access Granted</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}</span>`, "success");
-                            
+                            // res.status only exists on a NEWLY-marked attendance
+                            // response (see app.py) -- distinguishes a fresh
+                            // grant from an already-checked-in welcome-back, so
+                            // the heading matches what actually happened instead
+                            // of always claiming "Access Granted".
+                            let heading = res.status !== undefined ? "Access Granted" : "Welcome Back";
+                            setCamStatus(avatar + `<div>${heading}</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}</span>`, "success");
+                            updateFaceBox(res.face_box || null);
+
                             setTimeout(() => {
                                 eyeWasClosed = false; blinkDetected = false; isProc = false;
                                 consecutiveRecognitions = 0; lastRecognizedUser = null;
-                                setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                                setCamStatus("Step into the frame.", "", "normal");
+                                updateFaceBox(null);
                                 setTimeout(engine, 500);
                             }, 3500);
                             return;
                         } else if (!blinkDetected) {
-                            const confPct = res.confidence || 0;
-                            const challengeIcons = {
-                                'blink': '👁️ Blink your eyes',
-                                'turn_left': '↩️ Turn your head LEFT',
-                                'turn_right': '↪️ Turn your head RIGHT'
-                            };
-                            const prompt = challengeIcons[challenge] || 'Complete challenge';
-                            setCamStatus(
-                                `<i class="fa-solid fa-fingerprint"></i> ${res.user}`,
-                                `<span style="color:#f59e0b; font-weight:700;">` +
-                                `${prompt} (${confPct}%)</span>`,
-                                "blink"
-                            );
+                            // No visible instruction -- waiting silently for
+                            // one natural blink (see chat for the honest
+                            // replay-attack tradeoff vs. the old random
+                            // blink/turn_left/turn_right challenge).
+                            setCamStatus("Scanning...", "", "blink");
+                            updateFaceBox(res.face_box || null);
                         }
                     } else if(res.face_found) {
                         setCamStatus(
-                            "Identity Unknown", 
-                            "⚠️ Please <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>Register</a> first.",
+                            "Face Not Recognized",
+                            "⚠️ Please <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>register</a> first.",
                             "unregistered"
                         );
+                        updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0; lastRecognizedUser = null;
                         setTimeout(() => {
                             isProc = false;
-                            setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                            setCamStatus("Step into the frame.", "", "normal");
+                            updateFaceBox(null);
                             setTimeout(engine, 500);
                         }, 2500);
                         return;
                     } else {
-                        setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                        setCamStatus("Step into the frame.", "", "normal");
+                        updateFaceBox(null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0; lastRecognizedUser = null;
                     }
@@ -667,7 +708,7 @@
             }).catch(() => {});
             
             setTimeout(() => {
-                setCamStatus("Awaiting Subject", "Please look directly at the camera", "normal");
+                setCamStatus("Step into the frame.", "", "normal");
                 engine();
             }, 1500);
         }, 600);
