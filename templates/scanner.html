@@ -269,6 +269,57 @@
         </div>
     </div>
 
+    {% if debug_mode %}
+    <!-- Dev-only test-category label (FLASK_DEBUG=1 only). Purely descriptive --
+         tags each scan_events row with what's being shown to the camera for this
+         test run. Never read by the liveness/recognition pipeline. -->
+    <div style="position:absolute; top:100px; left:50%; transform:translateX(-50%); z-index:16;
+                background:rgba(0,0,0,0.75); backdrop-filter:blur(10px); border:1px solid rgba(245,158,11,0.3);
+                border-radius:10px; padding:8px 14px; font-family:'JetBrains Mono','Consolas',monospace;
+                font-size:0.68rem; color:#f59e0b; display:flex; align-items:center; gap:8px;">
+        <span style="font-weight:700;">TEST LABEL</span>
+        <select id="testLabelSelect" style="background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:3px 6px; font-family:inherit; font-size:0.68rem;">
+            <option value="">(none)</option>
+            <option value="real_face">Real face</option>
+            <option value="real_face_masked">Real face (masked)</option>
+            <option value="printed_photo">Printed photo</option>
+            <option value="printed_photo_masked">Printed photo (masked)</option>
+            <option value="phone_photo">Phone photo</option>
+            <option value="phone_video">Phone video</option>
+            <option value="laptop_screen">Laptop screen</option>
+            <option value="other">Other (custom)</option>
+        </select>
+        <input type="text" id="testLabelCustom" placeholder="custom label" maxlength="40"
+               style="display:none; background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:3px 6px; font-family:inherit; font-size:0.68rem; width:120px;">
+    </div>
+    <script>
+        (function() {
+            const sel = document.getElementById('testLabelSelect');
+            const custom = document.getElementById('testLabelCustom');
+            const KEY = 'devTestLabel';
+            try {
+                const saved = localStorage.getItem(KEY) || '';
+                if (saved && !Array.from(sel.options).some(o => o.value === saved)) {
+                    sel.value = 'other'; custom.value = saved; custom.style.display = 'inline-block';
+                } else {
+                    sel.value = saved;
+                }
+            } catch (e) {}
+            function currentLabel() {
+                return sel.value === 'other' ? custom.value.trim() : sel.value;
+            }
+            window.getDevTestLabel = currentLabel;
+            sel.addEventListener('change', () => {
+                custom.style.display = sel.value === 'other' ? 'inline-block' : 'none';
+                try { localStorage.setItem(KEY, currentLabel()); } catch (e) {}
+            });
+            custom.addEventListener('input', () => {
+                try { localStorage.setItem(KEY, currentLabel()); } catch (e) {}
+            });
+        })();
+    </script>
+    {% endif %}
+
     <!-- Debug overlay (toggle with 'D' key) -->
     <div class="debug-panel" id="debugPanel">
         <div><span class="debug-label">Confidence:</span> <span id="dbgConf" class="val">—</span></div>
@@ -430,9 +481,14 @@
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout (local)
 
+                    const payload = {image:b64, liveness_verified: blinkDetected};
+                    if (window.getDevTestLabel) {
+                        const lbl = window.getDevTestLabel();
+                        if (lbl) payload.test_label = lbl;
+                    }
                     const req = await fetch("{{ url_for('api_recognize_face') }}", {
                         method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({image:b64, liveness_verified: blinkDetected}),
+                        body: JSON.stringify(payload),
                         signal: controller.signal
                     });
                     clearTimeout(timeoutId);

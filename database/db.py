@@ -200,6 +200,7 @@ def _init_sqlite():
         )),
         user_id INTEGER,
         detail TEXT,
+        test_label TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 

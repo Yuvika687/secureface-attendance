@@ -19,6 +19,7 @@
             <tr>
                 <th>Time</th>
                 <th>Stage</th>
+                <th>Test Label</th>
                 <th>Session</th>
                 <th>User</th>
                 <th>Detail</th>
@@ -29,13 +30,14 @@
             <tr>
                 <td style="white-space:nowrap;">{{ row['created_at'] }}</td>
                 <td style="font-weight:700;">{{ row['stage'] }}</td>
+                <td style="color:#f59e0b; font-size:0.75rem;">{{ row['test_label'] or '' }}</td>
                 <td style="font-family:monospace; font-size:0.72rem;">{{ row['session_id'][:8] }}</td>
                 <td>{% if row['user_name'] %}{{ row['user_name'] }} ({{ row['employee_id'] }}){% endif %}</td>
                 <td style="font-size:0.75rem; color:var(--text-muted);">{{ row['detail'] or '' }}</td>
             </tr>
             {% endfor %}
             {% if not rows %}
-            <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No scan events logged yet.</td></tr>
+            <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No scan events logged yet.</td></tr>
             {% endif %}
         </tbody>
     </table>

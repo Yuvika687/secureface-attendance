@@ -91,12 +91,21 @@ if not Config.USE_POSTGRES:
                     )),
                     user_id INTEGER,
                     detail TEXT,
+                    test_label TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             conn.commit()
         except Exception:
             pass
+        try:
+            conn.execute("SELECT test_label FROM scan_events LIMIT 1")
+        except Exception:
+            try:
+                conn.execute("ALTER TABLE scan_events ADD COLUMN test_label TEXT")
+                conn.commit()
+            except Exception:
+                pass
         for key, value in _DEFAULT_SETTINGS.items():
             try:
                 conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -237,7 +246,7 @@ def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
     conn.close()
 
 
-def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True):
+def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True, test_label=None):
     """Writes one scan_events row for the pipeline STAGE reached this request
     -- for reviewing a test session afterward (what happened, in order).
 
@@ -261,8 +270,8 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
         session['last_logged_stage'] = stage
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO scan_events (session_id, stage, user_id, detail) VALUES (?, ?, ?, ?)",
-        (sid, stage, user_id, detail),
+        "INSERT INTO scan_events (session_id, stage, user_id, detail, test_label) VALUES (?, ?, ?, ?, ?)",
+        (sid, stage, user_id, detail, test_label),
     )
     conn.commit()
     conn.close()
@@ -274,7 +283,7 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
 
 @app.route("/")
 def home():
-    return render_template("scanner.html")
+    return render_template("scanner.html", debug_mode=DEBUG_MODE)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -597,7 +606,7 @@ def admin_scan_log():
     conn = get_db_connection()
     rows = conn.execute('''
         SELECT scan_events.id, scan_events.session_id, scan_events.stage,
-               scan_events.detail, scan_events.created_at,
+               scan_events.detail, scan_events.test_label, scan_events.created_at,
                users.name AS user_name, users.employee_id
         FROM scan_events
         LEFT JOIN users ON scan_events.user_id = users.id
@@ -1069,6 +1078,18 @@ def api_recognize_face():
         base64_img = data.get("image")
         liveness_verified = data.get("liveness_verified", False)
 
+        # Dev-only test-category label (e.g. "printed_photo") from the
+        # scanner page's debug-only dropdown -- only honored with
+        # FLASK_DEBUG=1, so this can't be used to write arbitrary free text
+        # from an unauthenticated caller outside local development. Purely
+        # descriptive: passed straight through to scan_events, never read
+        # by any classification/decision code above or below this line.
+        test_label = None
+        if DEBUG_MODE:
+            raw_label = data.get("test_label")
+            if isinstance(raw_label, str) and raw_label.strip():
+                test_label = raw_label.strip()[:40]
+
         if not base64_img:
             return jsonify({"success": False, "recognized": False, "msg": "No image data received."})
 
@@ -1085,7 +1106,7 @@ def api_recognize_face():
 
         if len(detections) == 0:
             _reset_liveness_session()
-            _log_scan_event("NO_FACE")
+            _log_scan_event("NO_FACE", test_label=test_label)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
@@ -1095,7 +1116,7 @@ def api_recognize_face():
 
         if len(detections) > 1:
             _reset_liveness_session()
-            _log_scan_event("MULTI_FACE")
+            _log_scan_event("MULTI_FACE", test_label=test_label)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False,
@@ -1115,7 +1136,7 @@ def api_recognize_face():
         prev_bbox = session.get('last_bbox')
         if _face_moved_too_much(prev_bbox, cur_bbox):
             _log_scan_event("FACE_MOVED", dedup=False, update_dedup_key=False,
-                             detail=f"prev={prev_bbox} cur={cur_bbox}")
+                             detail=f"prev={prev_bbox} cur={cur_bbox}", test_label=test_label)
             _reset_liveness_session()
         session['last_bbox'] = cur_bbox
 
@@ -1125,7 +1146,7 @@ def api_recognize_face():
         # anti-spoofing entirely. ---
         crop = crop_face(frame, best)
         if crop is None or crop.size == 0:
-            _log_scan_event("NO_FACE", detail="face too close to the frame edge")
+            _log_scan_event("NO_FACE", detail="face too close to the frame edge", test_label=test_label)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
                 "success": False, "recognized": False, "face_found": False,
@@ -1143,23 +1164,37 @@ def api_recognize_face():
 
         if decision != "LIVE":
             _log_liveness_event_if_changed(decision, smoothed_prob_spoof)
-            # A SPOOF/UNCERTAIN frame also ends any in-progress challenge --
-            # the subject in front of the camera is not currently verified
-            # live, so nothing they do should be able to complete a
-            # challenge that was issued while they briefly were.
-            session.pop('challenge_type', None)
-            session.pop('challenge_user', None)
-            session.pop('challenge_neutral_seen', None)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             if decision == "SPOOF":
-                _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}")
+                # A CONFIRMED spoof frame ends any in-progress challenge --
+                # the subject is not currently verified live, so nothing
+                # they do should complete a challenge issued while they
+                # briefly were (e.g. swapped to a photo mid-challenge).
+                session.pop('challenge_type', None)
+                session.pop('challenge_user', None)
+                session.pop('challenge_neutral_seen', None)
+                _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label)
                 return jsonify({
                     "success": False, "recognized": False,
                     "state": "SPOOF", "spoofing_detected": True,
                     "p_spoof": round(smoothed_prob_spoof, 4), "timings": timings,
                     "msg": "Spoofing detected — live presence required.",
                 })
-            _log_scan_event("UNCERTAIN", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}")
+            # UNCERTAIN: reject + log + retry THIS frame only (decision #1)
+            # -- deliberately does NOT clear the in-progress challenge.
+            # A real head turn or blink can transiently blur the crop enough
+            # to tip the smoothed score into the gray zone for a frame or
+            # two; clearing the challenge on that blip would force a brand
+            # new RANDOM challenge once liveness recovers, discarding
+            # whatever progress the same person already made on the
+            # original one. This was a real bug (caught via live testing):
+            # the challenge type changed mid-attempt even though the same
+            # physical subject never left the frame. No security loss from
+            # keeping it -- an UNCERTAIN frame never reaches recognition or
+            # advances the challenge state machine below, so preserving the
+            # challenge slot only ever helps a genuinely live, still-present
+            # subject resume where they left off.
+            _log_scan_event("UNCERTAIN", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label)
             return jsonify({
                 "success": False, "recognized": False,
                 "state": "UNCERTAIN",
@@ -1177,7 +1212,7 @@ def api_recognize_face():
         timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
 
         if multi_face:
-            _log_scan_event("MULTI_FACE")
+            _log_scan_event("MULTI_FACE", test_label=test_label)
             _reset_liveness_session()
             return jsonify({
                 "success": False, "recognized": False,
@@ -1226,7 +1261,7 @@ def api_recognize_face():
                     'turn_left': '↩️ Turn your head LEFT slowly',
                     'turn_right': '↪️ Turn your head RIGHT slowly',
                 }
-                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"awaiting challenge={challenge}")
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"awaiting challenge={challenge}", test_label=test_label)
                 return jsonify({
                     "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
@@ -1258,9 +1293,9 @@ def api_recognize_face():
                 conn.commit()
                 conn.close()
                 _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
-                                 dedup=False, update_dedup_key=False)
+                                 dedup=False, update_dedup_key=False, test_label=test_label)
                 _log_scan_event("ATTENDANCE_MARKED", user_id=user_id, detail=f"status={status} time={time_str}",
-                                 dedup=False)
+                                 dedup=False, test_label=test_label)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Access Granted. Attendance verified for {user_info['name']}",
@@ -1274,9 +1309,9 @@ def api_recognize_face():
             else:
                 conn.close()
                 _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge}",
-                                 dedup=False, update_dedup_key=False)
+                                 dedup=False, update_dedup_key=False, test_label=test_label)
                 _log_scan_event("ALREADY_MARKED", user_id=user_id, detail="already checked in today",
-                                 dedup=False)
+                                 dedup=False, test_label=test_label)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE",
                     "msg": f"Welcome back, {user_info['name']}. Already checked in today.",
@@ -1289,7 +1324,7 @@ def api_recognize_face():
 
         # LIVE, face found, but not recognized (either unregistered, or
         # fewer than min_face_samples enrolled -- see register_face()).
-        _log_scan_event("UNRECOGNIZED")
+        _log_scan_event("UNRECOGNIZED", test_label=test_label)
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,
