@@ -1,0 +1,32 @@
+=== CSRF enforcement: POST /login without token ===
+<!doctype html>
+<html lang=en>
+<title>400 Bad Request</title>
+<h1>Bad Request</h1>
+<p>The CSRF token is missing.</p>
+
+HTTP_STATUS:400
+
+=== Admin-only API without session: /api/search_employees ===
+
+=== Admin-only API without session: /api/attendance_feed ===
+{"error":"Unauthorized"}
+
+HTTP_STATUS:401
+
+=== Admin-only API without session: /api/system_status ===
+{"error":"Unauthorized"}
+
+HTTP_STATUS:401
+
+=== Dev-only route without FLASK_DEBUG: /admin/dev/clear_today_attendance ===
+<!doctype html>
+<html lang=en>
+<title>400 Bad Request</title>
+<h1>Bad Request</h1>
+<p>The CSRF token is missing.</p>
+
+HTTP_STATUS:400
+{"error":"Unauthorized"}
+
+HTTP_STATUS:401

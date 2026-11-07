@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.15, pytest-9.1.1, pluggy-1.7.0 -- /Users/yuvikamalhotra/Documents/project/liveness_smartface_merged/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/yuvikamalhotra/Documents/project/liveness_smartface_merged
+collecting ... collected 2 items
+
+tests/test_crop_identical.py::test_crop_identical_to_original[/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/data/celeba_spoof/test/live/test_10059_001096.png] PASSED [ 50%]
+tests/test_crop_identical.py::test_crop_identical_to_original[/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/data/celeba_spoof/test/spoof/test_10059_001051.png] PASSED [100%]
+
+============================== 2 passed in 4.04s ===============================
