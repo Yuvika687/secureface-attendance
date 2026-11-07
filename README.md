@@ -10,7 +10,7 @@ liveness/anti-spoofing model merged into its scan pipeline. The model's own trai
 project (dataset prep, training script, and full evaluation results) is included under
 [`training/`](training/) so the model can be retrained or audited. The original,
 pre-merge training project is archived in full at
-[`archive/liveness-v1`](https://github.com/Yuvika687/anti-spoof-attendance/tree/archive/liveness-v1)
+[`archive/liveness-v1`](https://github.com/Yuvika687/secureface-attendance/tree/archive/liveness-v1)
 in this same repo.
 
 ## What it does
@@ -83,8 +83,8 @@ Full-pipeline latency (face detection → liveness → recognition, one real rou
 ### Setup
 
 ```bash
-git clone https://github.com/Yuvika687/anti-spoof-attendance.git
-cd anti-spoof-attendance
+git clone https://github.com/Yuvika687/secureface-attendance.git
+cd secureface-attendance
 
 python3.11 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate

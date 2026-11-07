@@ -26,7 +26,7 @@ from utils.validators import validate_email, validate_password, validate_name
 def main():
     init_db()  # ensure tables exist; does NOT seed an admin without env vars
 
-    print("=== SmartFace Admin Setup ===")
+    print("=== SecureFace Attendance Admin Setup ===")
     name_input = input("Admin name [Admin]: ").strip() or "Admin"
     name, err = validate_name(name_input)
     if err:

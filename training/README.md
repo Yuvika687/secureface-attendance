@@ -4,7 +4,7 @@ This folder contains the training code, evaluation code, and real result files f
 liveness classifier used by the attendance app (`liveness/weights/best_liveness.pth`).
 It is a focused copy pulled from the original research project
 (`anti_spoof_attendance`, archived at
-[`archive/liveness-v1`](https://github.com/Yuvika687/anti-spoof-attendance/tree/archive/liveness-v1)
+[`archive/liveness-v1`](https://github.com/Yuvika687/secureface-attendance/tree/archive/liveness-v1)
 in this same GitHub account) — not the dataset, not the comparison-backbone
 checkpoints, not raw face images. It exists so the model can be retrained or
 re-evaluated without needing the original project folder.

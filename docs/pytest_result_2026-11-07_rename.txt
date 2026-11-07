@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.15, pytest-9.2.0, pluggy-1.7.0 -- /Users/yuvikamalhotra/Documents/project/secureface-attendance/venv/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/yuvikamalhotra/Documents/project/secureface-attendance
+collecting ... collected 2 items
+
+tests/test_crop_identical.py::test_crop_identical_to_original[image_path0] PASSED [ 50%]
+tests/test_crop_identical.py::test_crop_identical_to_original[image_path1] PASSED [100%]
+
+============================== 2 passed in 5.35s ===============================

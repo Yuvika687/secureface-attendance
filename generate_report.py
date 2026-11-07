@@ -5,7 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.colors import HexColor
 
-def create_pdf(filename="SmartFace_Project_Report.pdf"):
+def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
     doc = SimpleDocTemplate(filename, pagesize=letter,
                             rightMargin=50, leftMargin=50,
                             topMargin=50, bottomMargin=50)
@@ -75,19 +75,18 @@ def create_pdf(filename="SmartFace_Project_Report.pdf"):
 
     # Title Page
     story.append(Spacer(1, 100))
-    story.append(Paragraph("SmartFace AI v3.0", title_style))
-    story.append(Paragraph("Enterprise Biometric Attendance Engine", subtitle_style))
+    story.append(Paragraph("SecureFace Attendance", title_style))
+    story.append(Paragraph("Face Recognition Attendance with Liveness Detection", subtitle_style))
     story.append(Paragraph("Comprehensive Project Report", subtitle_style))
     story.append(Spacer(1, 200))
-    story.append(Paragraph("<b>Title:</b> SmartFace AI - Intelligent Attendance Management System", ParagraphStyle(name='c', alignment=TA_CENTER, fontSize=12)))
-    story.append(Paragraph("<b>Developed By:</b> Sofzenix Technologies", ParagraphStyle(name='c', alignment=TA_CENTER, fontSize=12)))
+    story.append(Paragraph("<b>Title:</b> SecureFace Attendance - Intelligent Attendance Management System", ParagraphStyle(name='c', alignment=TA_CENTER, fontSize=12)))
     story.append(Paragraph("<b>Technologies:</b> Python, Flask, MediaPipe, ONNX Runtime, ArcFace", ParagraphStyle(name='c', alignment=TA_CENTER, fontSize=12)))
     story.append(Paragraph("<b>Year:</b> 2026", ParagraphStyle(name='c', alignment=TA_CENTER, fontSize=12)))
     story.append(PageBreak())
 
     # 1. Introduction
     story.append(Paragraph("1. Introduction", h1_style))
-    intro_text = """SmartFace AI is a highly scalable, touchless attendance tracking system engineered to automate employee check-ins via state-of-the-art facial recognition. Moving away from traditional machine learning algorithms like Haar Cascades and Local Binary Pattern Histograms (LBPH), version 3.0 implements the ArcFace deep neural network (w600k_r50) using ONNX Runtime. This is coupled with Google's MediaPipe 478-point face mesh to guarantee real-time spatial liveness detection and active anti-spoofing."""
+    intro_text = """SecureFace Attendance is a highly scalable, touchless attendance tracking system engineered to automate employee check-ins via state-of-the-art facial recognition. Moving away from traditional machine learning algorithms like Haar Cascades and Local Binary Pattern Histograms (LBPH), version 3.0 implements the ArcFace deep neural network (w600k_r50) using ONNX Runtime. This is coupled with Google's MediaPipe 478-point face mesh to guarantee real-time spatial liveness detection and active anti-spoofing."""
     story.append(Paragraph(intro_text, body_style))
 
     # 2. System Architecture
@@ -127,7 +126,7 @@ def _get_embedding(aligned_face):<br/>
     story.append(Paragraph(code_emb, code_style))
 
     story.append(Paragraph("B. Fast Vectorized Match", h2_style))
-    body_match = "Instead of looping through all embeddings to compare distances, SmartFace AI uses a highly-optimized dot product against the entire matrix array at once caching the users in memory."
+    body_match = "Instead of looping through all embeddings to compare distances, SecureFace Attendance uses a highly-optimized dot product against the entire matrix array at once caching the users in memory."
     story.append(Paragraph(body_match, body_style))
     code_match = """
 def _find_best_match(query_embedding):<br/>
@@ -150,7 +149,7 @@ def _find_best_match(query_embedding):<br/>
 
     # 4. Anti-Spoofing
     story.append(Paragraph("4. Multi-Layer Anti-Spoofing System", h1_style))
-    spoof_text = """Face recognition without liveness checks is highly vulnerable to presentation attacks (holding up a phone or iPad with a photo/video). SmartFace introduces a robust pipeline to defeat attacks:<br/><br/>
+    spoof_text = """Face recognition without liveness checks is highly vulnerable to presentation attacks (holding up a phone or iPad with a photo/video). SecureFace Attendance introduces a robust pipeline to defeat attacks:<br/><br/>
 <b>1. 3D Depth Variance (Z-Axis):</b> A photograph is perfectly flat. MediaPipe extracts the Z-coordinates. By calculating the standard deviation of nose ridge projection versus recessed cheeks, flat representations are rejected.<br/><br/>
 <b>2. Display Bezel Detection:</b> A localized HoughLinesP edge detection algorithm assesses the bounding corners. Rectangular borders framing a face strongly suggest a digital device screen.<br/><br/>
 <b>3. Texture / Color Temperature Variance:</b> Utilizing a Local Binary Pattern (LBP) variance matrix and looking for OLED blue-channel bias, screens exhibiting Moiré interference artifacts and digital lighting are rejected.<br/><br/>
@@ -174,7 +173,7 @@ Installing existing enterprise models across organizational environments caused 
 
     # 6. Conclusion
     story.append(Paragraph("6. Conclusion", h1_style))
-    conc_text = """SmartFace AI v3.0 demonstrates how open-source topologies combined with modern neural networks (ArcFace) can deliver an enterprise-grade capability previously reserved for immense corporate budgets. The deployment utilizing Cloudflare Tunnels ensures that any organization can leverage instantaneous identity verification seamlessly, securely, and fully detached from recurring external software licensing restrictions."""
+    conc_text = """SecureFace Attendance demonstrates how open-source topologies combined with modern neural networks (ArcFace) can deliver an enterprise-grade capability previously reserved for immense corporate budgets. The deployment utilizing Cloudflare Tunnels ensures that any organization can leverage instantaneous identity verification seamlessly, securely, and fully detached from recurring external software licensing restrictions."""
     story.append(Paragraph(conc_text, body_style))
 
     doc.build(story)

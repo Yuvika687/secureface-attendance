@@ -814,7 +814,7 @@ def settings():
     if request.method == "POST":
         late_hour = request.form.get("late_cutoff_hour", "9")
         late_minute = request.form.get("late_cutoff_minute", "0")
-        company_name = request.form.get("company_name", "Sofzenix Technologies")
+        company_name = request.form.get("company_name", "")
         face_tolerance = request.form.get("face_tolerance", "0.45")
         min_face_samples = request.form.get("min_face_samples", "5")
         liveness_threshold = request.form.get("liveness_threshold", "0.5")
@@ -861,7 +861,7 @@ def settings():
     current_settings = {
         'late_cutoff_hour': get_setting('late_cutoff_hour', '9'),
         'late_cutoff_minute': get_setting('late_cutoff_minute', '0'),
-        'company_name': get_setting('company_name', 'Sofzenix Technologies'),
+        'company_name': get_setting('company_name', ''),
         'face_tolerance': get_setting('face_tolerance', '0.45'),
         'min_face_samples': get_setting('min_face_samples', '5'),
         'liveness_threshold': get_setting('liveness_threshold', '0.5'),
@@ -1631,10 +1631,10 @@ def api_send_test_email():
         server.starttls()
         server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
 
-        msg = MIMEText("This is a test email from SmartFace AI. Email notifications are working correctly!")
+        msg = MIMEText("This is a test email from SecureFace Attendance. Email notifications are working correctly!")
         msg['From'] = Config.MAIL_DEFAULT_SENDER
         msg['To'] = Config.MAIL_USERNAME
-        msg['Subject'] = "SmartFace: Test Email ✓"
+        msg['Subject'] = "SecureFace Attendance: Test Email ✓"
 
         server.send_message(msg)
         server.quit()

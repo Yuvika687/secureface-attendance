@@ -32,11 +32,9 @@ def get_email_html(employee_name, date_str, company_name):
                         <tr>
                             <td style="background:linear-gradient(135deg,#0a0e1a,#1a1f2e); padding:32px 40px; text-align:center;">
                                 <div style="font-size:24px; font-weight:800; color:#ffffff; letter-spacing:0.5px;">
-                                    🛡️ SmartFace AI
+                                    🛡️ SecureFace Attendance
                                 </div>
-                                <div style="font-size:12px; color:#10b981; font-weight:600; letter-spacing:2px; text-transform:uppercase; margin-top:4px;">
-                                    {company_name}
-                                </div>
+                                {f'<div style="font-size:12px; color:#10b981; font-weight:600; letter-spacing:2px; text-transform:uppercase; margin-top:4px;">{company_name}</div>' if company_name else ''}
                             </td>
                         </tr>
 
@@ -53,7 +51,7 @@ def get_email_html(employee_name, date_str, company_name):
                                 </p>
 
                                 <p style="font-size:15px; color:#374151; line-height:1.7; margin-bottom:20px;">
-                                    Our Smart Attendance system has detected that <strong>no attendance was recorded</strong> for you on <strong>{date_str}</strong>.
+                                    Our SecureFace Attendance system has detected that <strong>no attendance was recorded</strong> for you on <strong>{date_str}</strong>.
                                 </p>
 
                                 <div style="background:#fef3c7; border-left:4px solid #f59e0b; padding:16px 20px; border-radius:0 8px 8px 0; margin-bottom:24px;">
@@ -64,7 +62,7 @@ def get_email_html(employee_name, date_str, company_name):
                                 </div>
 
                                 <p style="font-size:14px; color:#6b7280; line-height:1.7;">
-                                    This is an automated notification from the SmartFace AI Attendance system. Please do not reply to this email.
+                                    This is an automated notification from the SecureFace Attendance system. Please do not reply to this email.
                                 </p>
                             </td>
                         </tr>
@@ -73,7 +71,7 @@ def get_email_html(employee_name, date_str, company_name):
                         <tr>
                             <td style="background:#f9fafb; padding:24px 40px; border-top:1px solid #e5e7eb; text-align:center;">
                                 <div style="font-size:12px; color:#9ca3af;">
-                                    Powered by <strong style="color:#10b981;">SmartFace AI</strong> • {company_name}
+                                    Powered by <strong style="color:#10b981;">SecureFace Attendance</strong>{f' • {company_name}' if company_name else ''}
                                 </div>
                                 <div style="font-size:11px; color:#d1d5db; margin-top:4px;">
                                     Sent on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
@@ -95,7 +93,7 @@ def send_absentee_emails():
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Get company name from settings
-    company_name = get_setting('company_name', 'Sofzenix Technologies')
+    company_name = get_setting('company_name', '')
     hr_email = get_setting('hr_email', '')
 
     # Get all active employees
@@ -134,7 +132,7 @@ def send_absentee_emails():
         msg = MIMEMultipart('alternative')
         msg['From'] = Config.MAIL_DEFAULT_SENDER
         msg['To'] = user['email']
-        msg['Subject'] = f"SmartFace: Attendance Not Recorded — {today}"
+        msg['Subject'] = f"SecureFace Attendance: Attendance Not Recorded — {today}"
 
         # Add HR CC if configured
         if hr_email and hr_email.strip():
@@ -143,13 +141,13 @@ def send_absentee_emails():
         # Plain text fallback
         plain_body = f"""Dear {user['name']},
 
-Our Smart Attendance system detected that no attendance was recorded for you on {today}.
+Our SecureFace Attendance system detected that no attendance was recorded for you on {today}.
 
 If you were present, please contact HR to update your record.
 If you were on approved leave, no action is needed.
 
 Best regards,
-SmartFace Admin — {company_name}
+SecureFace Attendance Admin{f' — {company_name}' if company_name else ''}
 """
         # HTML body
         html_body = get_email_html(user['name'], today, company_name)

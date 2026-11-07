@@ -240,7 +240,7 @@ def _init_postgres():
 _DEFAULT_SETTINGS = {
     'late_cutoff_hour': '9',
     'late_cutoff_minute': '0',
-    'company_name': 'Sofzenix Technologies',
+    'company_name': '',
     'face_tolerance': '0.45',
     'min_face_samples': '5',
     'liveness_threshold': '0.5',

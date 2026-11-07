@@ -1,8 +1,8 @@
-# SmartFace AI — Cloudflare Tunnel Deployment Guide
+# SecureFace Attendance — Cloudflare Tunnel Deployment Guide
 
 ## Overview
 
-Run SmartFace AI on your local PC and expose it securely to the internet via Cloudflare Tunnel.  
+Run SecureFace Attendance on your local PC and expose it securely to the internet via Cloudflare Tunnel.  
 Anyone with the URL can access the scanner from any device, anywhere — as long as your PC is on.
 
 ---
@@ -48,7 +48,7 @@ A certificate is saved to `%USERPROFILE%\.cloudflared\cert.pem`.
 ## Step 3: Create a Named Tunnel
 
 ```powershell
-cloudflared tunnel create smartface
+cloudflared tunnel create secureface-attendance
 ```
 
 This creates a tunnel with a fixed UUID. Note the tunnel ID (e.g., `a1b2c3d4-...`).  
@@ -61,7 +61,7 @@ Credentials are saved to `%USERPROFILE%\.cloudflared\<TUNNEL_ID>.json`.
 Replace `yourdomain.com` with your actual domain:
 
 ```powershell
-cloudflared tunnel route dns smartface attendance.yourdomain.com
+cloudflared tunnel route dns secureface-attendance attendance.yourdomain.com
 ```
 
 This creates a CNAME record pointing `attendance.yourdomain.com` → your tunnel.
@@ -73,7 +73,7 @@ This creates a CNAME record pointing `attendance.yourdomain.com` → your tunnel
 Create `%USERPROFILE%\.cloudflared\config.yml`:
 
 ```yaml
-tunnel: smartface
+tunnel: secureface-attendance
 credentials-file: C:\Users\<YOUR_USERNAME>\.cloudflared\<TUNNEL_ID>.json
 
 ingress:
@@ -88,7 +88,7 @@ Replace `<YOUR_USERNAME>` and `<TUNNEL_ID>` with your actual values.
 
 ## Step 6: Start Everything
 
-### Terminal 1 — Start SmartFace AI:
+### Terminal 1 — Start SecureFace Attendance:
 ```powershell
 cd A:\Smart-Attendance-System
 python app.py
@@ -96,7 +96,7 @@ python app.py
 
 ### Terminal 2 — Start Cloudflare Tunnel:
 ```powershell
-cloudflared tunnel run smartface
+cloudflared tunnel run secureface-attendance
 ```
 
 Your app is now live at: **https://attendance.yourdomain.com** 🎉
