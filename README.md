@@ -1,138 +1,148 @@
-<div align="center">
+# Face Attendance System with Liveness Detection
 
-<!-- Animated Hero Banner -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0a0e1a,50:064e3b,100:10b981&height=220&section=header&text=SmartFace%20AI&fontSize=72&fontColor=ffffff&fontAlignY=35&desc=Enterprise%20Biometric%20Engine%20v3.0&descSize=18&descAlignY=55&descColor=94a3b8&animation=fadeIn" width="100%" />
+A Flask attendance app that checks a user in by face recognition, with an anti-spoofing
+("liveness") check in front of it so a printed photo, phone screen, or similar replay
+attack can't be used to fake someone's attendance.
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Flask](https://img.shields.io/badge/Flask-2.3+-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com)
-[![ONNX](https://img.shields.io/badge/ONNX_ArcFace-99.8%25-005CED?style=for-the-badge&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
-[![MediaPipe](https://img.shields.io/badge/MediaPipe-478_Pt_Mesh-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://mediapipe.dev)
-[![PostgreSQL](https://img.shields.io/badge/Neon_DB-Supported-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://neon.tech)
+This repo is the final merged project: a Flask face-recognition attendance app
+(originally a student project, `Sofzenix/Smart-Attendance-System`) with a self-trained
+liveness/anti-spoofing model merged into its scan pipeline. The model's own training
+project (dataset prep, training script, and full evaluation results) is included under
+[`training/`](training/) so the model can be retrained or audited. The original,
+pre-merge training project is archived in full at
+[`archive/liveness-v1`](https://github.com/Yuvika687/anti-spoof-attendance/tree/archive/liveness-v1)
+in this same repo.
 
-<br/>
+## What it does
 
-<p>
-  <img src="https://readme-typing-svg.demolab.com?font=Inter&weight=800&size=20&duration=3000&pause=1000&color=10B981&center=true&vCenter=true&multiline=true&repeat=true&width=750&height=60&lines=ArcFace+ONNX+512-D+Embeddings+%7C+99.8%25+LFW+Accuracy;Multi-Layer+Anti-Spoofing+%7C+3D+Depth+%2B+Texture;MediaPipe+478-Point+Mesh+%7C+Real-Time+Liveness" alt="Typing SVG" />
-</p>
+1. A student/employee registers a face (webcam captures several real embeddings).
+2. At check-in, they look at the camera. The scan pipeline runs:
+   - Face detection (is there a face, and only one?)
+   - Liveness check (is it a real face, not a photo/screen/mask?) — a silent wait for
+     one natural blink while classified `LIVE`, with an 8-second timeout
+   - Face recognition (whose face is it?) — matched against registered embeddings
+   - Attendance gets marked (`Present` / `Late`, based on the configured cutoff time)
+3. Every scan's outcome is logged (dev-only review page) so a spoof attempt, an
+   unrecognized face, or a successful check-in can all be traced back to which pipeline
+   stage decided it.
 
-<p><em>Enterprise-grade face recognition attendance system powered by ArcFace ONNX and MediaPipe, featuring real-time liveness detection and active anti-spoofing. Built by <strong>Sofzenix Technologies</strong>.</em></p>
+## Pipeline
 
-</div>
-
----
-
-## 🌟 Overview
-
-**SmartFace AI v3.0** is a completely upgraded, ultra-fast biometric attendance system. It abandons traditional legacy models (like Haar Cascades or LBPH) in favor of the state-of-the-art **ArcFace w600k_r50 ONNX model**, generating dense 512-dimensional embeddings for unmatched 99.8% accuracy. 
-
-It pairs this deep learning recognition vector with **MediaPipe Face Mesh (478 landmarks)** to execute complex spatial liveness checks, 3D depth variance analysis, and intelligent screen-spoof detection in real-time.
-
-```text
-┌───────────────────────────────────────────────────────────────────┐
-│                          SMARTFACE v3.0                           │
-│                                                                   │
-│   Webcam Frame → MediaPipe Mesh Alignment → ArcFace ONNX Model    │
-│                            ↓                                      │
-│                  512-D Vector Cosine Similarity                   │
-│                            ↓                                      │
-│                  Multi-Factor Liveness Pipeline:                  │
-│       (3D Depth Analysis + LBP Texture + Screen Detection)        │
-│                            ↓                                      │
-│                ✅ Access Granted & Attendance Logged              │
-└───────────────────────────────────────────────────────────────────┘
+```
+Webcam frame (browser)
+   → BlazeFace detection (MediaPipe FaceDetector) — reject if 0 or >1 faces
+   → crop_face() — the same crop function used to build the liveness model's training data
+   → Liveness classifier (MobileNetV3-Small, trained in this repo — see training/)
+        → p_spoof probability → three-way decision via a calibrated gray-zone band:
+          LIVE / SPOOF / UNCERTAIN (not a plain 0.5 cutoff — see training/README.md)
+   → Silent-blink challenge (only once classified LIVE) — natural blink detected via
+     MediaPipe FaceLandmarker (478-point mesh) eye-aspect-ratio, 8s timeout
+   → Face recognition — ArcFace (w600k_r50) ONNX, 512-D embedding, cosine similarity
+     against the user's stored (Fernet-encrypted) embeddings
+   → Attendance marked (SQLite locally, or Postgres/Neon in production)
 ```
 
----
+## Models used
 
-## 🚀 Key Upgrades in v3.0
+| Model | Trained by this project? | Purpose |
+|---|---|---|
+| MobileNetV3-Small liveness classifier (`liveness/weights/best_liveness.pth`) | **Yes** — see [`training/`](training/) for the full training/evaluation code and real results | Binary real-vs-spoof probability per face crop |
+| ArcFace `w600k_r50` (ONNX, auto-downloaded on first run) | No — a pretrained, publicly available face-recognition model | 512-D face embedding for recognition/matching |
+| MediaPipe BlazeFace / FaceLandmarker (auto-downloaded on first run) | No — Google's pretrained MediaPipe models | Face detection and 478-point landmark mesh (for the blink check) |
 
-- **ArcFace ONNX Engine:** Replaced LBPH with a quantized `w600k_r50` ArcFace ONNX model for enterprise-level face matching. Matches are done via blazing-fast vectorized cosine similarity.
-- **Advanced 3D Liveness:** Uses 478-point MediaPipe mesh to calculate Z-axis depth variance, easily distinguishing a flat 2D photo from a real 3D human face.
-- **Hardware-Agnostic:** Pure Python + ONNX runtime means it runs on standard CPUs natively without requiring complex C++ compiler setups or dedicated GPUs.
-- **Cloudflare Tunnel Deployment:** Instantly expose the local high-performance recognition server to the internet securely via HTTPS without port forwarding.
+## Real results (the liveness model)
 
----
+Full details, methodology, and every underlying result file are in
+[`training/README.md`](training/README.md) and [`training/results/`](training/results/).
+Headline numbers, from a held-out 3,900-image CelebA-Spoof test set the model was never
+trained on (`training/results/summary.json`):
 
-## 🛡️ Anti-Spoofing Architecture
+| | Accuracy | HTER (half total error rate) |
+|---|---|---|
+| Plain 0.5 threshold | 98.69% | 1.31% |
+| With the calibrated gray-zone band (95.1% of cases decided, rest flagged `UNCERTAIN`) | 99.78% (on decided cases) | 0.22% (on decided cases) |
 
-SmartFace AI uses a deterministic multi-signal physical pipeline to defeat spoofing attempts:
+The model was retrained once already after discovering a real bug: the first version
+(v1) was trained on uncropped photos but evaluated on cropped faces in production,
+which alone cost ~4 points of accuracy. The current model (v2) is trained on the same
+crop the live pipeline actually uses. See `training/README.md` for the full before/after
+numbers and why MobileNetV3-Small was chosen over two larger backbones that scored
+slightly higher.
 
-1. **3D Depth Variance (MediaPipe):** Measures Z-coordinate spread across the nose ridge, cheeks, and eyes. Flat screens return <0.05 variance; real faces return >0.15.
-2. **Screen Bezel Detection:** Uses Canny Edge and Hough Lines to identify straight, rectangular Bezels surrounding the face (typical of phone/tablet presentation).
-3. **Brightness & Contrast Anomaly:** Measures the delta between the face ROI luminosity outshining the background environment (indicative of a backlit digital display).
-4. **Color Temperature Shift:** Detects the unnatural blue-channel emission signature of OLED/LCD screens.
-5. **Randomized Liveness Challenge:** The system randomly requests dynamic actions (e.g., "Blink", "Turn Head Left", "Turn Head Right") monitored via instantaneous Head Pose estimation and EAR calculation.
+Full-pipeline latency (face detection → liveness → recognition, one real round trip,
+45 requests): **median 80.6 ms** (`docs/pipeline_latency_2026-11-07.txt`).
 
----
+## How to run it
 
-## ⚙️ Quick Start Guide
+### Requirements
+- Python 3.11 (pinned via `.python-version` / `runtime.txt`; `mediapipe==0.10.30` is
+  pinned exactly — newer versions crash on Apple M-series + Metal 4, see
+  `requirements.txt`)
+- A webcam, for face registration and check-in
 
-### 1. Prerequisites
-- **Python 3.10 or 3.11** (recommended for ONNX compatibility)
-- Standard USB Webcam
-
-### 2. Local Installation
+### Setup
 
 ```bash
-git clone https://github.com/Sofzenix/Smart-Attendance-System.git
-cd Smart-Attendance-System
+git clone https://github.com/Yuvika687/anti-spoof-attendance.git
+cd anti-spoof-attendance
 
-# Create Virtual Environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Mac/Linux
+python3.11 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 
-# Install strictly verified dependencies
 pip install -r requirements.txt
 
-# Run the app (It will automatically download the ~300MB ONNX model on first run)
-python app.py
+cp .env.example .env
+# edit .env: set SECRET_KEY, FACE_ENCRYPTION_KEY (generate with the command
+# shown in .env.example), and DATABASE_URL only if using Postgres/Neon —
+# omit DATABASE_URL to use local SQLite instead.
 ```
 
-### 3. Expose to Internet via Cloudflare (Recommended)
-You don't need expensive GPU cloud servers. Run the AI engine natively on your local machine and expose it to the web securely via zero-trust tunnels.
+On first run, `app.py` auto-downloads the ArcFace ONNX model and the MediaPipe
+BlazeFace/FaceLandmarker model files (not committed to this repo — see
+`.gitignore`). The liveness model (`liveness/weights/best_liveness.pth`) **is**
+committed and needs no download.
+
+### Create accounts
 
 ```bash
-winget install --id Cloudflare.cloudflared
-cloudflared tunnel login
-cloudflared tunnel --url http://localhost:5000
+python scripts/create_admin.py          # interactive — creates/resets an admin login
+python scripts/create_test_student.py   # interactive — creates a student login
+                                         # (face still needs to be registered for real,
+                                         # via the webcam, after first login)
 ```
-*(Reference `cloudflare_tunnel.md` for full custom domain setup)*
 
----
+### Run
 
-## 👨‍💼 Administrator Guide
+```bash
+python app.py                 # production-like: debug off
+FLASK_DEBUG=1 python app.py   # local dev: enables the dev-only scan log, test-label
+                               # dropdown on the scanner page, and the "clear today's
+                               # attendance" admin action
+```
 
-**Default Admin Status:**
-Go to `/admin` and use the default credentials:
-- **Email:** `admin@sofzenix.com`
-- **Password:** `Admin@123`
+Then open `http://localhost:5000`.
 
-### Face Registration Process
-1. A new user registers an account at `/register`.
-2. Upon first login, they visit the scanner.
-3. The system captures **up to 15 unique 512-D embeddings** representing different angles and ambient lighting for maximum resilience.
-4. From then on, scanning involves mere millisecond vectorized comparisons.
+### Run the tests
 
----
+```bash
+pytest
+```
 
-## 🧰 Technology Stack
+## Repository layout
 
-| Layer | Tools Used | Purpose |
-|:------|:-----------|:--------|
-| **AI Inference** | ONNX Runtime | Runs ArcFace `w600k_r50` model locally |
-| **Spatial Mapping** | Google MediaPipe | 478-point mesh, head yaw, blink EAR |
-| **Backend API** | Flask + Werkzeug | Serves UI and processes JSON base64 frames |
-| **Database** | SQLite / Neon Postgres | Multi-environment ORM equivalent | 
-| **Job Scheduling** | APScheduler | Triggers nightly absentee HR emails |
+- `app.py`, `templates/`, `static/`, `database/`, `utils/` — the Flask attendance app
+- `liveness/` — the liveness model's inference code (`predictor.py`, `face_utils.py`,
+  `model.py`) and the trained weights actually used at runtime
+  (`liveness/weights/best_liveness.pth`, `gray_zone_v2.json`)
+- `training/` — the model's own training/evaluation project: training script,
+  evaluation scripts, the real result files behind every number above, and
+  instructions to reproduce training (see `training/README.md`)
+- `scripts/` — account-creation and latency-measurement scripts
+- `docs/` — handover document and dated, real verification logs (latency, test output,
+  auth checks)
 
----
+## Known issues
 
-## 📝 License & Contact
-
-This project is licensed under the **MIT License**.
-Developed & Maintained by [Sofzenix Technologies](https://github.com/Sofzenix).
-
-<div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0a0e1a,50:064e3b,100:10b981&height=120&section=footer" width="100%" />
-</div>
+See [`docs/HANDOVER.md`](docs/HANDOVER.md) for the full, honest list (what's verified,
+what's unverified, and what's still risky — including an existing `/admin/wipe_model`
+route that wipes all users' face data, and an orphaned unused template).
