@@ -1,0 +1,47 @@
+{
+  "mobilenet_v3_small": {
+    "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/best_liveness.pth",
+    "param_count": 1000993,
+    "model_file_size_mb": 3.9521360397338867,
+    "latency_cpu_ms_median": 45.683832995564444,
+    "latency_mps_ms_median": 6.58614549683989,
+    "gradcam_mps_ms_median": 22.59554199918057,
+    "n_timed_runs": 100,
+    "n_gradcam_timed_runs": 20,
+    "batch_size": 1,
+    "image_size": 224,
+    "cpu_onnx_ms": 2.7569375015445985,
+    "onnx_max_abs_diff_vs_pytorch": 0.000186920166015625,
+    "onnx_parity_check_n": 20
+  },
+  "resnet18": {
+    "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/resnet18/best_liveness.pth",
+    "param_count": 11242305,
+    "model_file_size_mb": 42.96480083465576,
+    "latency_cpu_ms_median": 12.043062499287771,
+    "latency_mps_ms_median": 5.925791996560292,
+    "gradcam_mps_ms_median": 20.528291497612372,
+    "n_timed_runs": 100,
+    "n_gradcam_timed_runs": 20,
+    "batch_size": 1,
+    "image_size": 224,
+    "cpu_onnx_ms": 17.266229500819463,
+    "onnx_max_abs_diff_vs_pytorch": 3.4332275390625e-05,
+    "onnx_parity_check_n": 20
+  },
+  "efficientnet_b0": {
+    "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/efficientnet_b0/best_liveness.pth",
+    "param_count": 4171645,
+    "model_file_size_mb": 16.20814037322998,
+    "latency_cpu_ms_median": 131.81581249955343,
+    "latency_mps_ms_median": 11.037250002118526,
+    "gradcam_mps_ms_median": 49.06606299846317,
+    "n_timed_runs": 100,
+    "n_gradcam_timed_runs": 20,
+    "batch_size": 1,
+    "image_size": 224,
+    "cpu_onnx_ms": 7.697416498558596,
+    "onnx_max_abs_diff_vs_pytorch": 4.57763671875e-05,
+    "onnx_parity_check_n": 20
+  }
+}

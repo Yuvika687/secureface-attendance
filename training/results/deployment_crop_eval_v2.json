@@ -1,0 +1,72 @@
+{
+  "checkpoint": "../models/v2_cropped/best_liveness.pth",
+  "n_total": 3900,
+  "n_detected": 3839,
+  "n_missed": 61,
+  "detection_rate": 0.9843589743589743,
+  "miss_rate": 0.01564102564102564,
+  "metrics_on_detected_subset": {
+    "accuracy": 0.9903620734566293,
+    "apcer": 0.01209889531825355,
+    "bpcer": 0.007223942208462332,
+    "hter": 0.00966141876335794
+  },
+  "baseline_raw_frame_accuracy": 0.9915384615384616,
+  "miss_rate_by_category": {
+    "LIVE": {
+      "total": 1950,
+      "missed": 12,
+      "miss_rate": 0.006153846153846154
+    },
+    "3D Mask": {
+      "total": 196,
+      "missed": 0,
+      "miss_rate": 0.0
+    },
+    "paper upper-body-mask attack": {
+      "total": 195,
+      "missed": 10,
+      "miss_rate": 0.05128205128205128
+    },
+    "Photo": {
+      "total": 182,
+      "missed": 1,
+      "miss_rate": 0.005494505494505495
+    },
+    "PC": {
+      "total": 229,
+      "missed": 7,
+      "miss_rate": 0.03056768558951965
+    },
+    "Poster": {
+      "total": 177,
+      "missed": 10,
+      "miss_rate": 0.05649717514124294
+    },
+    "A4": {
+      "total": 186,
+      "missed": 3,
+      "miss_rate": 0.016129032258064516
+    },
+    "paper face-mask attack": {
+      "total": 172,
+      "missed": 0,
+      "miss_rate": 0.0
+    },
+    "paper region-mask attack": {
+      "total": 224,
+      "missed": 0,
+      "miss_rate": 0.0
+    },
+    "Pad": {
+      "total": 180,
+      "missed": 0,
+      "miss_rate": 0.0
+    },
+    "Phone": {
+      "total": 209,
+      "missed": 18,
+      "miss_rate": 0.0861244019138756
+    }
+  }
+}

@@ -1,0 +1,1659 @@
+{
+  "canonical_protocol": "Full 3,900-image CelebA-Spoof test set; deployment-style face crops (BlazeFace detection + 25% margin, falling back to the dataset's own official bounding box when BlazeFace misses -- see build_face_cropped_dataset.py); plain 0.5 decision threshold. n=3900 for every model under this protocol (fallback crops mean no image is ever excluded).",
+  "blazeface_only_protocol": "Same 3,900-image test set, but using ONLY live BlazeFace detection -- no bbox fallback. Images where BlazeFace finds no face get NO decision at all (matching true live-webcam behavior, where no official bounding box exists to fall back to). n < 3900; see 'n' and 'coverage' fields for the exact count.",
+  "consistency_notes": [
+    {
+      "numbers": "v1 deployment-crop accuracy reported as both 95.94% (TASK F) and 94.54% (TASK G v1-vs-v2 table)",
+      "explanation": "95.94% used BLAZEFACE_ONLY_PROTOCOL (n=3839/3900 -- the 61 images where live BlazeFace detection missed were excluded entirely, matching true deployment behavior where there is no fallback). 94.54% used CANONICAL_PROTOCOL (n=3900 -- those same 61 images got a crop via the dataset's own official bounding box, which only exists for this labeled benchmark, not for a live webcam frame). Both are real numbers computed correctly; they simply answer different questions. 94.54% is the one reported under 'v1_vs_v2' below (canonical)."
+    },
+    {
+      "numbers": "v2 accuracy reported as both 99.04% (masked-eval's unmasked baseline) and 98.69% (TASK G headline)",
+      "explanation": "Same root cause as above. 99.04% is BLAZEFACE_ONLY_PROTOCOL (n=3839), deliberately chosen as the masked-eval baseline because bbox fallback isn't a fair stand-in for a MASKED face -- the dataset's official bounding box was computed on the unmasked face, so using it when a mask causes a miss would hide exactly the Stage-1 effect masked-eval exists to measure. 98.69% is CANONICAL_PROTOCOL (n=3900) and is the number reported under 'headline' and 'backbone_comparison' below. The masked-eval section is intentionally NOT on the canonical protocol and is labeled as such."
+    }
+  ],
+  "headline": {
+    "protocol": "Full 3,900-image CelebA-Spoof test set; deployment-style face crops (BlazeFace detection + 25% margin, falling back to the dataset's own official bounding box when BlazeFace misses -- see build_face_cropped_dataset.py); plain 0.5 decision threshold. n=3900 for every model under this protocol (fallback crops mean no image is ever excluded).",
+    "n": 3900,
+    "active_model": "v2 (mobilenet_v3_small, face-crop-trained; see TASK G)",
+    "accuracy": 0.9869230769230769,
+    "apcer": 0.013846153846153847,
+    "bpcer": 0.012307692307692308,
+    "hter": 0.013076923076923076
+  },
+  "v1_vs_v2": {
+    "protocol": "Full 3,900-image CelebA-Spoof test set; deployment-style face crops (BlazeFace detection + 25% margin, falling back to the dataset's own official bounding box when BlazeFace misses -- see build_face_cropped_dataset.py); plain 0.5 decision threshold. n=3900 for every model under this protocol (fallback crops mean no image is ever excluded).",
+    "n": 3900,
+    "v1": {
+      "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/best_liveness.pth",
+      "accuracy": 0.9453846153846154,
+      "apcer": 0.07743589743589743,
+      "bpcer": 0.031794871794871796,
+      "hter": 0.054615384615384614,
+      "n_live": 1950,
+      "n_spoof": 1950,
+      "precision_live": 0.9259440902403139,
+      "recall_live": 0.9682051282051282,
+      "f1_live": 0.9466031586863876,
+      "precision_spoof": 0.9666845781837722,
+      "recall_spoof": 0.9225641025641026,
+      "f1_spoof": 0.9441091577013907
+    },
+    "v2": {
+      "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/best_liveness.pth",
+      "accuracy": 0.9869230769230769,
+      "apcer": 0.013846153846153847,
+      "bpcer": 0.012307692307692308,
+      "hter": 0.013076923076923076,
+      "n_live": 1950,
+      "n_spoof": 1950,
+      "precision_live": 0.9861751152073732,
+      "recall_live": 0.9876923076923076,
+      "f1_live": 0.9869331283627979,
+      "precision_spoof": 0.987673343605547,
+      "recall_spoof": 0.9861538461538462,
+      "f1_spoof": 0.9869130100076983
+    },
+    "per_attack_type_apcer": {
+      "v1": {
+        "3D Mask": {
+          "n": 196,
+          "apcer": 0.08163265306122448
+        },
+        "paper upper-body-mask attack": {
+          "n": 195,
+          "apcer": 0.03076923076923077
+        },
+        "Photo": {
+          "n": 182,
+          "apcer": 0.13736263736263737
+        },
+        "PC": {
+          "n": 229,
+          "apcer": 0.13100436681222707
+        },
+        "Poster": {
+          "n": 177,
+          "apcer": 0.096045197740113
+        },
+        "A4": {
+          "n": 186,
+          "apcer": 0.07526881720430108
+        },
+        "paper face-mask attack": {
+          "n": 172,
+          "apcer": 0.01744186046511628
+        },
+        "paper region-mask attack": {
+          "n": 224,
+          "apcer": 0.022321428571428572
+        },
+        "Pad": {
+          "n": 180,
+          "apcer": 0.08333333333333333
+        },
+        "Phone": {
+          "n": 209,
+          "apcer": 0.09569377990430622
+        }
+      },
+      "v2": {
+        "3D Mask": {
+          "n": 196,
+          "apcer": 0.01020408163265306
+        },
+        "paper upper-body-mask attack": {
+          "n": 195,
+          "apcer": 0.010256410256410256
+        },
+        "Photo": {
+          "n": 182,
+          "apcer": 0.01098901098901099
+        },
+        "PC": {
+          "n": 229,
+          "apcer": 0.03056768558951965
+        },
+        "Poster": {
+          "n": 177,
+          "apcer": 0.011299435028248588
+        },
+        "A4": {
+          "n": 186,
+          "apcer": 0.010752688172043012
+        },
+        "paper face-mask attack": {
+          "n": 172,
+          "apcer": 0.0
+        },
+        "paper region-mask attack": {
+          "n": 224,
+          "apcer": 0.008928571428571428
+        },
+        "Pad": {
+          "n": 180,
+          "apcer": 0.022222222222222223
+        },
+        "Phone": {
+          "n": 209,
+          "apcer": 0.019138755980861243
+        }
+      }
+    }
+  },
+  "backbone_comparison": {
+    "protocol": "Full 3,900-image CelebA-Spoof test set; deployment-style face crops (BlazeFace detection + 25% margin, falling back to the dataset's own official bounding box when BlazeFace misses -- see build_face_cropped_dataset.py); plain 0.5 decision threshold. n=3900 for every model under this protocol (fallback crops mean no image is ever excluded).",
+    "n": 3900,
+    "deployed_backbone": "mobilenet_v3_small",
+    "mobilenet_v3_small": {
+      "accuracy": 0.9869230769230769,
+      "apcer": 0.013846153846153847,
+      "bpcer": 0.012307692307692308,
+      "hter": 0.013076923076923076,
+      "n_live": 1950,
+      "n_spoof": 1950,
+      "precision_live": 0.9861751152073732,
+      "recall_live": 0.9876923076923076,
+      "f1_live": 0.9869331283627979,
+      "precision_spoof": 0.987673343605547,
+      "recall_spoof": 0.9861538461538462,
+      "f1_spoof": 0.9869130100076983
+    },
+    "resnet18": {
+      "threshold": 0.5,
+      "accuracy": 0.9889743589743589,
+      "apcer": 0.016923076923076923,
+      "bpcer": 0.005128205128205128,
+      "hter": 0.011025641025641025,
+      "n_live": 1950,
+      "n_spoof": 1950,
+      "precision_live": 0.9832742017232641,
+      "recall_live": 0.9948717948717949,
+      "f1_live": 0.9890390007647208,
+      "precision_spoof": 0.9948105864037364,
+      "recall_spoof": 0.9830769230769231,
+      "f1_spoof": 0.9889089502192416
+    },
+    "efficientnet_b0": {
+      "threshold": 0.5,
+      "accuracy": 0.9925641025641025,
+      "apcer": 0.009743589743589744,
+      "bpcer": 0.005128205128205128,
+      "hter": 0.0074358974358974365,
+      "n_live": 1950,
+      "n_spoof": 1950,
+      "precision_live": 0.9903011740684022,
+      "recall_live": 0.9948717948717949,
+      "f1_live": 0.9925812228191353,
+      "precision_spoof": 0.9948480164863472,
+      "recall_spoof": 0.9902564102564102,
+      "f1_spoof": 0.9925469031097405
+    },
+    "latency_and_size": {
+      "mobilenet_v3_small": {
+        "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/best_liveness.pth",
+        "param_count": 1000993,
+        "model_file_size_mb": 3.9521360397338867,
+        "latency_cpu_ms_median": 45.683832995564444,
+        "latency_mps_ms_median": 6.58614549683989,
+        "gradcam_mps_ms_median": 22.59554199918057,
+        "n_timed_runs": 100,
+        "n_gradcam_timed_runs": 20,
+        "batch_size": 1,
+        "image_size": 224,
+        "cpu_onnx_ms": 2.7569375015445985,
+        "onnx_max_abs_diff_vs_pytorch": 0.000186920166015625,
+        "onnx_parity_check_n": 20
+      },
+      "resnet18": {
+        "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/resnet18/best_liveness.pth",
+        "param_count": 11242305,
+        "model_file_size_mb": 42.96480083465576,
+        "latency_cpu_ms_median": 12.043062499287771,
+        "latency_mps_ms_median": 5.925791996560292,
+        "gradcam_mps_ms_median": 20.528291497612372,
+        "n_timed_runs": 100,
+        "n_gradcam_timed_runs": 20,
+        "batch_size": 1,
+        "image_size": 224,
+        "cpu_onnx_ms": 17.266229500819463,
+        "onnx_max_abs_diff_vs_pytorch": 3.4332275390625e-05,
+        "onnx_parity_check_n": 20
+      },
+      "efficientnet_b0": {
+        "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/efficientnet_b0/best_liveness.pth",
+        "param_count": 4171645,
+        "model_file_size_mb": 16.20814037322998,
+        "latency_cpu_ms_median": 131.81581249955343,
+        "latency_mps_ms_median": 11.037250002118526,
+        "gradcam_mps_ms_median": 49.06606299846317,
+        "n_timed_runs": 100,
+        "n_gradcam_timed_runs": 20,
+        "batch_size": 1,
+        "image_size": 224,
+        "cpu_onnx_ms": 7.697416498558596,
+        "onnx_max_abs_diff_vs_pytorch": 4.57763671875e-05,
+        "onnx_parity_check_n": 20
+      }
+    }
+  },
+  "breakdowns": {
+    "protocol": "Full 3,900-image CelebA-Spoof test set; deployment-style face crops (BlazeFace detection + 25% margin, falling back to the dataset's own official bounding box when BlazeFace misses -- see build_face_cropped_dataset.py); plain 0.5 decision threshold. n=3900 for every model under this protocol (fallback crops mean no image is ever excluded). Per-attack-type/illumination/environment APCER.",
+    "mobilenet_v3_small": {
+      "backbone": "mobilenet_v3_small",
+      "checkpoint": "../models/v2_cropped/best_liveness.pth",
+      "source_mapping_url": "https://github.com/ZhangYuanhan-AI/CelebA-Spoof/blob/master/README.md",
+      "note": "Illumination/environment breakdowns are computed over spoof images only (live images carry no real illumination/environment code in this dataset's own annotations -- verified directly on the raw label data). Only APCER is reported for those two breakdowns, not BPCER/accuracy, since there is no live subgroup within a single illumination/environment bucket to compute them against.",
+      "low_confidence_threshold_n": 50,
+      "spoof_type_breakdown": [
+        {
+          "name": "Photo",
+          "n": 182,
+          "apcer": 0.01098901098901099,
+          "low_confidence": false
+        },
+        {
+          "name": "Poster",
+          "n": 177,
+          "apcer": 0.011299435028248588,
+          "low_confidence": false
+        },
+        {
+          "name": "A4",
+          "n": 186,
+          "apcer": 0.010752688172043012,
+          "low_confidence": false
+        },
+        {
+          "name": "paper face-mask attack",
+          "n": 172,
+          "apcer": 0.0,
+          "low_confidence": false
+        },
+        {
+          "name": "paper upper-body-mask attack",
+          "n": 195,
+          "apcer": 0.010256410256410256,
+          "low_confidence": false
+        },
+        {
+          "name": "paper region-mask attack",
+          "n": 224,
+          "apcer": 0.008928571428571428,
+          "low_confidence": false
+        },
+        {
+          "name": "PC",
+          "n": 229,
+          "apcer": 0.03056768558951965,
+          "low_confidence": false
+        },
+        {
+          "name": "Pad",
+          "n": 180,
+          "apcer": 0.022222222222222223,
+          "low_confidence": false
+        },
+        {
+          "name": "Phone",
+          "n": 209,
+          "apcer": 0.019138755980861243,
+          "low_confidence": false
+        },
+        {
+          "name": "3D Mask",
+          "n": 196,
+          "apcer": 0.01020408163265306,
+          "low_confidence": false
+        }
+      ],
+      "illumination_breakdown": [
+        {
+          "name": "Normal",
+          "n": 1198,
+          "apcer": 0.012520868113522538,
+          "low_confidence": false
+        },
+        {
+          "name": "Strong",
+          "n": 332,
+          "apcer": 0.015060240963855422,
+          "low_confidence": false
+        },
+        {
+          "name": "Back",
+          "n": 224,
+          "apcer": 0.022321428571428572,
+          "low_confidence": false
+        },
+        {
+          "name": "Dark",
+          "n": 196,
+          "apcer": 0.01020408163265306,
+          "low_confidence": false
+        }
+      ],
+      "environment_breakdown": [
+        {
+          "name": "Indoor",
+          "n": 1498,
+          "apcer": 0.012683578104138851,
+          "low_confidence": false
+        },
+        {
+          "name": "Outdoor",
+          "n": 452,
+          "apcer": 0.017699115044247787,
+          "low_confidence": false
+        }
+      ]
+    },
+    "resnet18": {
+      "backbone": "resnet18",
+      "checkpoint": "../models/v2_cropped/resnet18/best_liveness.pth",
+      "source_mapping_url": "https://github.com/ZhangYuanhan-AI/CelebA-Spoof/blob/master/README.md",
+      "note": "Illumination/environment breakdowns are computed over spoof images only (live images carry no real illumination/environment code in this dataset's own annotations -- verified directly on the raw label data). Only APCER is reported for those two breakdowns, not BPCER/accuracy, since there is no live subgroup within a single illumination/environment bucket to compute them against.",
+      "low_confidence_threshold_n": 50,
+      "spoof_type_breakdown": [
+        {
+          "name": "Photo",
+          "n": 182,
+          "apcer": 0.016483516483516484,
+          "low_confidence": false
+        },
+        {
+          "name": "Poster",
+          "n": 177,
+          "apcer": 0.022598870056497175,
+          "low_confidence": false
+        },
+        {
+          "name": "A4",
+          "n": 186,
+          "apcer": 0.016129032258064516,
+          "low_confidence": false
+        },
+        {
+          "name": "paper face-mask attack",
+          "n": 172,
+          "apcer": 0.0,
+          "low_confidence": false
+        },
+        {
+          "name": "paper upper-body-mask attack",
+          "n": 195,
+          "apcer": 0.010256410256410256,
+          "low_confidence": false
+        },
+        {
+          "name": "paper region-mask attack",
+          "n": 224,
+          "apcer": 0.0,
+          "low_confidence": false
+        },
+        {
+          "name": "PC",
+          "n": 229,
+          "apcer": 0.043668122270742356,
+          "low_confidence": false
+        },
+        {
+          "name": "Pad",
+          "n": 180,
+          "apcer": 0.027777777777777776,
+          "low_confidence": false
+        },
+        {
+          "name": "Phone",
+          "n": 209,
+          "apcer": 0.028708133971291867,
+          "low_confidence": false
+        },
+        {
+          "name": "3D Mask",
+          "n": 196,
+          "apcer": 0.0,
+          "low_confidence": false
+        }
+      ],
+      "illumination_breakdown": [
+        {
+          "name": "Normal",
+          "n": 1198,
+          "apcer": 0.015859766277128547,
+          "low_confidence": false
+        },
+        {
+          "name": "Strong",
+          "n": 332,
+          "apcer": 0.009036144578313253,
+          "low_confidence": false
+        },
+        {
+          "name": "Back",
+          "n": 224,
+          "apcer": 0.03125,
+          "low_confidence": false
+        },
+        {
+          "name": "Dark",
+          "n": 196,
+          "apcer": 0.02040816326530612,
+          "low_confidence": false
+        }
+      ],
+      "environment_breakdown": [
+        {
+          "name": "Indoor",
+          "n": 1498,
+          "apcer": 0.018691588785046728,
+          "low_confidence": false
+        },
+        {
+          "name": "Outdoor",
+          "n": 452,
+          "apcer": 0.011061946902654867,
+          "low_confidence": false
+        }
+      ]
+    },
+    "efficientnet_b0": {
+      "backbone": "efficientnet_b0",
+      "checkpoint": "../models/v2_cropped/efficientnet_b0/best_liveness.pth",
+      "source_mapping_url": "https://github.com/ZhangYuanhan-AI/CelebA-Spoof/blob/master/README.md",
+      "note": "Illumination/environment breakdowns are computed over spoof images only (live images carry no real illumination/environment code in this dataset's own annotations -- verified directly on the raw label data). Only APCER is reported for those two breakdowns, not BPCER/accuracy, since there is no live subgroup within a single illumination/environment bucket to compute them against.",
+      "low_confidence_threshold_n": 50,
+      "spoof_type_breakdown": [
+        {
+          "name": "Photo",
+          "n": 182,
+          "apcer": 0.005494505494505495,
+          "low_confidence": false
+        },
+        {
+          "name": "Poster",
+          "n": 177,
+          "apcer": 0.011299435028248588,
+          "low_confidence": false
+        },
+        {
+          "name": "A4",
+          "n": 186,
+          "apcer": 0.005376344086021506,
+          "low_confidence": false
+        },
+        {
+          "name": "paper face-mask attack",
+          "n": 172,
+          "apcer": 0.0,
+          "low_confidence": false
+        },
+        {
+          "name": "paper upper-body-mask attack",
+          "n": 195,
+          "apcer": 0.010256410256410256,
+          "low_confidence": false
+        },
+        {
+          "name": "paper region-mask attack",
+          "n": 224,
+          "apcer": 0.004464285714285714,
+          "low_confidence": false
+        },
+        {
+          "name": "PC",
+          "n": 229,
+          "apcer": 0.03056768558951965,
+          "low_confidence": false
+        },
+        {
+          "name": "Pad",
+          "n": 180,
+          "apcer": 0.016666666666666666,
+          "low_confidence": false
+        },
+        {
+          "name": "Phone",
+          "n": 209,
+          "apcer": 0.009569377990430622,
+          "low_confidence": false
+        },
+        {
+          "name": "3D Mask",
+          "n": 196,
+          "apcer": 0.0,
+          "low_confidence": false
+        }
+      ],
+      "illumination_breakdown": [
+        {
+          "name": "Normal",
+          "n": 1198,
+          "apcer": 0.010851419031719533,
+          "low_confidence": false
+        },
+        {
+          "name": "Strong",
+          "n": 332,
+          "apcer": 0.006024096385542169,
+          "low_confidence": false
+        },
+        {
+          "name": "Back",
+          "n": 224,
+          "apcer": 0.008928571428571428,
+          "low_confidence": false
+        },
+        {
+          "name": "Dark",
+          "n": 196,
+          "apcer": 0.01020408163265306,
+          "low_confidence": false
+        }
+      ],
+      "environment_breakdown": [
+        {
+          "name": "Indoor",
+          "n": 1498,
+          "apcer": 0.011348464619492658,
+          "low_confidence": false
+        },
+        {
+          "name": "Outdoor",
+          "n": 452,
+          "apcer": 0.004424778761061947,
+          "low_confidence": false
+        }
+      ]
+    }
+  },
+  "gray_zone": {
+    "protocol": "Band selected on the VALIDATION set only (never test); applied to the canonical-protocol test set (n=3900). v2 (mobilenet_v3_small) only.",
+    "target_uncertain_fraction": 0.05,
+    "band_selected_on": "validation set only (predictions_val.csv) -- test set never used for band selection",
+    "threshold": 0.5,
+    "band_half_width": 0.47578289144572283,
+    "band_low": 0.024217108554277167,
+    "band_high": 0.9757828914457228,
+    "validation_uncertain_fraction_achieved": 0.05,
+    "test_baseline_plain_threshold": {
+      "n_total": 3900,
+      "n_decided": 3900,
+      "n_uncertain": 0,
+      "coverage": 1.0,
+      "accuracy": 0.9869230769230769,
+      "apcer": 0.013846153846153847,
+      "bpcer": 0.012307692307692308,
+      "hter": 0.013076923076923076
+    },
+    "test_gray_zone_decided_only": {
+      "n_total": 3900,
+      "n_decided": 3710,
+      "n_uncertain": 190,
+      "coverage": 0.9512820512820512,
+      "accuracy": 0.997843665768194,
+      "apcer": 0.0016233766233766235,
+      "bpcer": 0.0026852846401718583,
+      "hter": 0.002154330631774241
+    },
+    "false_accepts_rescued_to_uncertain": 24,
+    "false_accepts_total": 27,
+    "false_rejects_rescued_to_uncertain": 19,
+    "false_rejects_total": 24,
+    "pc_replay_false_accepts": {
+      "pc_false_accepts_total": 7,
+      "pc_false_accepts_in_uncertain": 6
+    },
+    "coverage_vs_error_curve": [
+      {
+        "half_width": 0.0,
+        "coverage": 1.0,
+        "hter": 0.013076923076923076,
+        "apcer": 0.013846153846153847,
+        "bpcer": 0.012307692307692308
+      },
+      {
+        "half_width": 0.00504040404040404,
+        "coverage": 0.9994871794871795,
+        "hter": 0.012570548999486916,
+        "apcer": 0.013340174448435094,
+        "bpcer": 0.011800923550538737
+      },
+      {
+        "half_width": 0.01008080808080808,
+        "coverage": 0.9989743589743589,
+        "hter": 0.012319804738341841,
+        "apcer": 0.013340174448435094,
+        "bpcer": 0.011299435028248588
+      },
+      {
+        "half_width": 0.015121212121212122,
+        "coverage": 0.9987179487179487,
+        "hter": 0.012065770677454957,
+        "apcer": 0.013340174448435094,
+        "bpcer": 0.01079136690647482
+      },
+      {
+        "half_width": 0.02016161616161616,
+        "coverage": 0.997948717948718,
+        "hter": 0.01156087070415156,
+        "apcer": 0.012833675564681724,
+        "bpcer": 0.0102880658436214
+      },
+      {
+        "half_width": 0.0252020202020202,
+        "coverage": 0.9974358974358974,
+        "hter": 0.011309479910367931,
+        "apcer": 0.012840267077555213,
+        "bpcer": 0.00977869274318065
+      },
+      {
+        "half_width": 0.030242424242424244,
+        "coverage": 0.9974358974358974,
+        "hter": 0.011309479910367931,
+        "apcer": 0.012840267077555213,
+        "bpcer": 0.00977869274318065
+      },
+      {
+        "half_width": 0.035282828282828284,
+        "coverage": 0.9971794871794872,
+        "hter": 0.011311997596450109,
+        "apcer": 0.012840267077555213,
+        "bpcer": 0.009783728115345005
+      },
+      {
+        "half_width": 0.04032323232323232,
+        "coverage": 0.9966666666666667,
+        "hter": 0.011060217844712969,
+        "apcer": 0.012846865364850977,
+        "bpcer": 0.00927357032457496
+      },
+      {
+        "half_width": 0.04536363636363636,
+        "coverage": 0.9966666666666667,
+        "hter": 0.011060217844712969,
+        "apcer": 0.012846865364850977,
+        "bpcer": 0.00927357032457496
+      },
+      {
+        "half_width": 0.0504040404040404,
+        "coverage": 0.9958974358974358,
+        "hter": 0.010553368749428256,
+        "apcer": 0.012339331619537276,
+        "bpcer": 0.008767405879319236
+      },
+      {
+        "half_width": 0.05544444444444444,
+        "coverage": 0.9953846153846154,
+        "hter": 0.010557895030212624,
+        "apcer": 0.012339331619537276,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.06048484848484849,
+        "coverage": 0.9953846153846154,
+        "hter": 0.010557895030212624,
+        "apcer": 0.012339331619537276,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.06552525252525253,
+        "coverage": 0.9953846153846154,
+        "hter": 0.010557895030212624,
+        "apcer": 0.012339331619537276,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.07056565656565657,
+        "coverage": 0.9951282051282051,
+        "hter": 0.01030386708052629,
+        "apcer": 0.011831275720164609,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.07560606060606061,
+        "coverage": 0.9948717948717949,
+        "hter": 0.010049577650706467,
+        "apcer": 0.011322696860524962,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.08064646464646465,
+        "coverage": 0.9948717948717949,
+        "hter": 0.010049577650706467,
+        "apcer": 0.011322696860524962,
+        "bpcer": 0.008776458440887971
+      },
+      {
+        "half_width": 0.08568686868686869,
+        "coverage": 0.9941025641025641,
+        "hter": 0.009799561974256008,
+        "apcer": 0.010813594232749742,
+        "bpcer": 0.008785529715762274
+      },
+      {
+        "half_width": 0.09072727272727273,
+        "coverage": 0.9935897435897436,
+        "hter": 0.009804618883751112,
+        "apcer": 0.010819165378670788,
+        "bpcer": 0.008790072388831437
+      },
+      {
+        "half_width": 0.09576767676767677,
+        "coverage": 0.9933333333333333,
+        "hter": 0.009806892570349363,
+        "apcer": 0.010819165378670788,
+        "bpcer": 0.008794619762027936
+      },
+      {
+        "half_width": 0.1008080808080808,
+        "coverage": 0.9930769230769231,
+        "hter": 0.009550369438817796,
+        "apcer": 0.010819165378670788,
+        "bpcer": 0.008281573498964804
+      },
+      {
+        "half_width": 0.10584848484848484,
+        "coverage": 0.9928205128205129,
+        "hter": 0.009293580617869833,
+        "apcer": 0.010819165378670788,
+        "bpcer": 0.007767995857068877
+      },
+      {
+        "half_width": 0.11088888888888888,
+        "coverage": 0.9925641025641025,
+        "hter": 0.00903863710379217,
+        "apcer": 0.010309278350515464,
+        "bpcer": 0.007767995857068877
+      },
+      {
+        "half_width": 0.11592929292929292,
+        "coverage": 0.9925641025641025,
+        "hter": 0.00903863710379217,
+        "apcer": 0.010309278350515464,
+        "bpcer": 0.007767995857068877
+      },
+      {
+        "half_width": 0.12096969696969698,
+        "coverage": 0.9923076923076923,
+        "hter": 0.00878158218043908,
+        "apcer": 0.010309278350515464,
+        "bpcer": 0.007253886010362694
+      },
+      {
+        "half_width": 0.12601010101010102,
+        "coverage": 0.992051282051282,
+        "hter": 0.00852637570244798,
+        "apcer": 0.009798865394533264,
+        "bpcer": 0.007253886010362694
+      },
+      {
+        "half_width": 0.13105050505050506,
+        "coverage": 0.9917948717948718,
+        "hter": 0.008528255921735268,
+        "apcer": 0.009798865394533264,
+        "bpcer": 0.007257646448937273
+      },
+      {
+        "half_width": 0.1360909090909091,
+        "coverage": 0.9917948717948718,
+        "hter": 0.008528255921735268,
+        "apcer": 0.009798865394533264,
+        "bpcer": 0.007257646448937273
+      },
+      {
+        "half_width": 0.14113131313131314,
+        "coverage": 0.9915384615384616,
+        "hter": 0.00827278607276585,
+        "apcer": 0.009287925696594427,
+        "bpcer": 0.007257646448937273
+      },
+      {
+        "half_width": 0.14617171717171717,
+        "coverage": 0.9912820512820513,
+        "hter": 0.008275183575526973,
+        "apcer": 0.009292720702116675,
+        "bpcer": 0.007257646448937273
+      },
+      {
+        "half_width": 0.15121212121212121,
+        "coverage": 0.9910256410256411,
+        "hter": 0.008017729645664147,
+        "apcer": 0.009292720702116675,
+        "bpcer": 0.006742738589211619
+      },
+      {
+        "half_width": 0.15625252525252525,
+        "coverage": 0.9907692307692307,
+        "hter": 0.00776000850881651,
+        "apcer": 0.009292720702116675,
+        "bpcer": 0.006227296315516347
+      },
+      {
+        "half_width": 0.1612929292929293,
+        "coverage": 0.9902564102564102,
+        "hter": 0.007506413015639311,
+        "apcer": 0.008785529715762274,
+        "bpcer": 0.006227296315516347
+      },
+      {
+        "half_width": 0.16633333333333333,
+        "coverage": 0.9892307692307692,
+        "hter": 0.0072560515469901905,
+        "apcer": 0.008281573498964804,
+        "bpcer": 0.006230529595015576
+      },
+      {
+        "half_width": 0.17137373737373737,
+        "coverage": 0.9892307692307692,
+        "hter": 0.0072560515469901905,
+        "apcer": 0.008281573498964804,
+        "bpcer": 0.006230529595015576
+      },
+      {
+        "half_width": 0.1764141414141414,
+        "coverage": 0.9889743589743589,
+        "hter": 0.007257669866365519,
+        "apcer": 0.008281573498964804,
+        "bpcer": 0.006233766233766234
+      },
+      {
+        "half_width": 0.18145454545454545,
+        "coverage": 0.9884615384615385,
+        "hter": 0.006743826122064464,
+        "apcer": 0.007253886010362694,
+        "bpcer": 0.006233766233766234
+      },
+      {
+        "half_width": 0.1864949494949495,
+        "coverage": 0.9882051282051282,
+        "hter": 0.006745446123684466,
+        "apcer": 0.007253886010362694,
+        "bpcer": 0.006237006237006237
+      },
+      {
+        "half_width": 0.19153535353535353,
+        "coverage": 0.9882051282051282,
+        "hter": 0.006745446123684466,
+        "apcer": 0.007253886010362694,
+        "bpcer": 0.006237006237006237
+      },
+      {
+        "half_width": 0.19657575757575757,
+        "coverage": 0.9876923076923076,
+        "hter": 0.00648974637057022,
+        "apcer": 0.00673924313115604,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.2016161616161616,
+        "coverage": 0.9876923076923076,
+        "hter": 0.00648974637057022,
+        "apcer": 0.00673924313115604,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.20665656565656565,
+        "coverage": 0.9876923076923076,
+        "hter": 0.00648974637057022,
+        "apcer": 0.00673924313115604,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.2116969696969697,
+        "coverage": 0.9876923076923076,
+        "hter": 0.00648974637057022,
+        "apcer": 0.00673924313115604,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.21673737373737373,
+        "coverage": 0.9876923076923076,
+        "hter": 0.00648974637057022,
+        "apcer": 0.00673924313115604,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.22177777777777777,
+        "coverage": 0.9871794871794872,
+        "hter": 0.006233772962750373,
+        "apcer": 0.006227296315516347,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.2268181818181818,
+        "coverage": 0.9866666666666667,
+        "hter": 0.0059772676621350565,
+        "apcer": 0.005714285714285714,
+        "bpcer": 0.0062402496099844
+      },
+      {
+        "half_width": 0.23185858585858585,
+        "coverage": 0.9864102564102564,
+        "hter": 0.0059788910361230855,
+        "apcer": 0.005714285714285714,
+        "bpcer": 0.006243496357960458
+      },
+      {
+        "half_width": 0.2368989898989899,
+        "coverage": 0.9861538461538462,
+        "hter": 0.005980376037608088,
+        "apcer": 0.005717255717255718,
+        "bpcer": 0.006243496357960458
+      },
+      {
+        "half_width": 0.24193939393939395,
+        "coverage": 0.985897435897436,
+        "hter": 0.005981862583556412,
+        "apcer": 0.005720228809152366,
+        "bpcer": 0.006243496357960458
+      },
+      {
+        "half_width": 0.246979797979798,
+        "coverage": 0.985897435897436,
+        "hter": 0.005981862583556412,
+        "apcer": 0.005720228809152366,
+        "bpcer": 0.006243496357960458
+      },
+      {
+        "half_width": 0.25202020202020203,
+        "coverage": 0.9853846153846154,
+        "hter": 0.0059849757405010945,
+        "apcer": 0.005723204994797087,
+        "bpcer": 0.006246746486205101
+      },
+      {
+        "half_width": 0.25706060606060605,
+        "coverage": 0.9848717948717949,
+        "hter": 0.005727678578690883,
+        "apcer": 0.005723204994797087,
+        "bpcer": 0.005732152162584679
+      },
+      {
+        "half_width": 0.2621010101010101,
+        "coverage": 0.9848717948717949,
+        "hter": 0.005727678578690883,
+        "apcer": 0.005723204994797087,
+        "bpcer": 0.005732152162584679
+      },
+      {
+        "half_width": 0.2671414141414141,
+        "coverage": 0.9846153846153847,
+        "hter": 0.005729168220803011,
+        "apcer": 0.005726184279021343,
+        "bpcer": 0.005732152162584679
+      },
+      {
+        "half_width": 0.2721818181818182,
+        "coverage": 0.9846153846153847,
+        "hter": 0.005729168220803011,
+        "apcer": 0.005726184279021343,
+        "bpcer": 0.005732152162584679
+      },
+      {
+        "half_width": 0.2772222222222222,
+        "coverage": 0.9843589743589743,
+        "hter": 0.0057306625253292325,
+        "apcer": 0.005726184279021343,
+        "bpcer": 0.005735140771637122
+      },
+      {
+        "half_width": 0.28226262626262627,
+        "coverage": 0.9841025641025641,
+        "hter": 0.0057321537191518945,
+        "apcer": 0.005729166666666666,
+        "bpcer": 0.005735140771637122
+      },
+      {
+        "half_width": 0.2873030303030303,
+        "coverage": 0.9835897435897436,
+        "hter": 0.005213765755127527,
+        "apcer": 0.005211047420531527,
+        "bpcer": 0.005216484089723527
+      },
+      {
+        "half_width": 0.29234343434343435,
+        "coverage": 0.9830769230769231,
+        "hter": 0.004955797292325644,
+        "apcer": 0.0046923879040667365,
+        "bpcer": 0.005219206680584551
+      },
+      {
+        "half_width": 0.29738383838383836,
+        "coverage": 0.9828205128205129,
+        "hter": 0.004696063403730496,
+        "apcer": 0.0046923879040667365,
+        "bpcer": 0.004699738903394256
+      },
+      {
+        "half_width": 0.30242424242424243,
+        "coverage": 0.9823076923076923,
+        "hter": 0.004698515019058973,
+        "apcer": 0.004694835680751174,
+        "bpcer": 0.004702194357366771
+      },
+      {
+        "half_width": 0.30746464646464644,
+        "coverage": 0.9815384615384616,
+        "hter": 0.004702195640928702,
+        "apcer": 0.004699738903394256,
+        "bpcer": 0.004704652378463147
+      },
+      {
+        "half_width": 0.3125050505050505,
+        "coverage": 0.981025641025641,
+        "hter": 0.004443282801881861,
+        "apcer": 0.004181913225300575,
+        "bpcer": 0.004704652378463147
+      },
+      {
+        "half_width": 0.3175454545454545,
+        "coverage": 0.9807692307692307,
+        "hter": 0.004183006821855308,
+        "apcer": 0.004181913225300575,
+        "bpcer": 0.0041841004184100415
+      },
+      {
+        "half_width": 0.3225858585858586,
+        "coverage": 0.9807692307692307,
+        "hter": 0.004183006821855308,
+        "apcer": 0.004181913225300575,
+        "bpcer": 0.0041841004184100415
+      },
+      {
+        "half_width": 0.32762626262626265,
+        "coverage": 0.9805128205128205,
+        "hter": 0.003922594142259414,
+        "apcer": 0.0036610878661087866,
+        "bpcer": 0.0041841004184100415
+      },
+      {
+        "half_width": 0.33266666666666667,
+        "coverage": 0.9805128205128205,
+        "hter": 0.003922594142259414,
+        "apcer": 0.0036610878661087866,
+        "bpcer": 0.0041841004184100415
+      },
+      {
+        "half_width": 0.33770707070707073,
+        "coverage": 0.9802564102564103,
+        "hter": 0.003923688883342201,
+        "apcer": 0.0036610878661087866,
+        "bpcer": 0.004186289900575615
+      },
+      {
+        "half_width": 0.34274747474747475,
+        "coverage": 0.9792307692307692,
+        "hter": 0.003927937890202042,
+        "apcer": 0.003663003663003663,
+        "bpcer": 0.0041928721174004195
+      },
+      {
+        "half_width": 0.3477878787878788,
+        "coverage": 0.9792307692307692,
+        "hter": 0.003927937890202042,
+        "apcer": 0.003663003663003663,
+        "bpcer": 0.0041928721174004195
+      },
+      {
+        "half_width": 0.3528282828282828,
+        "coverage": 0.9784615384615385,
+        "hter": 0.003668763102725367,
+        "apcer": 0.0031446540880503146,
+        "bpcer": 0.0041928721174004195
+      },
+      {
+        "half_width": 0.3578686868686869,
+        "coverage": 0.9782051282051282,
+        "hter": 0.0034076705154462376,
+        "apcer": 0.0031446540880503146,
+        "bpcer": 0.0036706869428421605
+      },
+      {
+        "half_width": 0.3629090909090909,
+        "coverage": 0.9774358974358974,
+        "hter": 0.0034104218881397036,
+        "apcer": 0.003146303093864709,
+        "bpcer": 0.003674540682414698
+      },
+      {
+        "half_width": 0.36794949494949497,
+        "coverage": 0.9764102564102564,
+        "hter": 0.0034140044107728784,
+        "apcer": 0.0031496062992125984,
+        "bpcer": 0.0036784025223331584
+      },
+      {
+        "half_width": 0.372989898989899,
+        "coverage": 0.9753846153846154,
+        "hter": 0.003417735515258735,
+        "apcer": 0.0031512605042016808,
+        "bpcer": 0.0036842105263157894
+      },
+      {
+        "half_width": 0.37803030303030305,
+        "coverage": 0.9751282051282051,
+        "hter": 0.003155820449705451,
+        "apcer": 0.002627430373095113,
+        "bpcer": 0.0036842105263157894
+      },
+      {
+        "half_width": 0.38307070707070706,
+        "coverage": 0.9748717948717949,
+        "hter": 0.003156790489338499,
+        "apcer": 0.002627430373095113,
+        "bpcer": 0.003686150605581885
+      },
+      {
+        "half_width": 0.38811111111111113,
+        "coverage": 0.9743589743589743,
+        "hter": 0.0031584522531326906,
+        "apcer": 0.0026288117770767614,
+        "bpcer": 0.0036880927291886197
+      },
+      {
+        "half_width": 0.39315151515151514,
+        "coverage": 0.9741025641025641,
+        "hter": 0.0031591436817957827,
+        "apcer": 0.0026301946344029457,
+        "bpcer": 0.0036880927291886197
+      },
+      {
+        "half_width": 0.3981919191919192,
+        "coverage": 0.9733333333333334,
+        "hter": 0.003161222339304531,
+        "apcer": 0.0026343519494204425,
+        "bpcer": 0.0036880927291886197
+      },
+      {
+        "half_width": 0.4032323232323232,
+        "coverage": 0.9728205128205129,
+        "hter": 0.0031628887717448603,
+        "apcer": 0.002635740643120717,
+        "bpcer": 0.0036900369003690036
+      },
+      {
+        "half_width": 0.4082727272727273,
+        "coverage": 0.9723076923076923,
+        "hter": 0.0031648360207688015,
+        "apcer": 0.002635740643120717,
+        "bpcer": 0.0036939313984168864
+      },
+      {
+        "half_width": 0.4133131313131313,
+        "coverage": 0.9707692307692307,
+        "hter": 0.002641589887728244,
+        "apcer": 0.0021119324181626186,
+        "bpcer": 0.003171247357293869
+      },
+      {
+        "half_width": 0.41835353535353537,
+        "coverage": 0.9702564102564103,
+        "hter": 0.002642706131078224,
+        "apcer": 0.0021141649048625794,
+        "bpcer": 0.003171247357293869
+      },
+      {
+        "half_width": 0.4233939393939394,
+        "coverage": 0.968974358974359,
+        "hter": 0.002646062836639862,
+        "apcer": 0.0021175224986765486,
+        "bpcer": 0.0031746031746031746
+      },
+      {
+        "half_width": 0.42843434343434345,
+        "coverage": 0.9674358974358974,
+        "hter": 0.002649712999272804,
+        "apcer": 0.0021231422505307855,
+        "bpcer": 0.0031762837480148226
+      },
+      {
+        "half_width": 0.43347474747474746,
+        "coverage": 0.9664102564102565,
+        "hter": 0.002652524375347405,
+        "apcer": 0.0021253985122210413,
+        "bpcer": 0.003179650238473768
+      },
+      {
+        "half_width": 0.4385151515151515,
+        "coverage": 0.9658974358974359,
+        "hter": 0.002654211192450043,
+        "apcer": 0.0021253985122210413,
+        "bpcer": 0.003183023872679045
+      },
+      {
+        "half_width": 0.44355555555555554,
+        "coverage": 0.9656410256410256,
+        "hter": 0.0026547761574984806,
+        "apcer": 0.002126528442317916,
+        "bpcer": 0.003183023872679045
+      },
+      {
+        "half_width": 0.4485959595959596,
+        "coverage": 0.9648717948717949,
+        "hter": 0.0026564746626441017,
+        "apcer": 0.002129925452609159,
+        "bpcer": 0.003183023872679045
+      },
+      {
+        "half_width": 0.4536363636363636,
+        "coverage": 0.9628205128205128,
+        "hter": 0.0026624113475177307,
+        "apcer": 0.0021333333333333334,
+        "bpcer": 0.0031914893617021275
+      },
+      {
+        "half_width": 0.4586767676767677,
+        "coverage": 0.9612820512820512,
+        "hter": 0.002400288694907768,
+        "apcer": 0.002136752136752137,
+        "bpcer": 0.002663825253063399
+      },
+      {
+        "half_width": 0.4637171717171717,
+        "coverage": 0.9587179487179487,
+        "hter": 0.0024064308828873164,
+        "apcer": 0.0021447721179624667,
+        "bpcer": 0.0026680896478121665
+      },
+      {
+        "half_width": 0.46875757575757576,
+        "coverage": 0.9558974358974359,
+        "hter": 0.002413189782431564,
+        "apcer": 0.002154011847065159,
+        "bpcer": 0.002672367717797969
+      },
+      {
+        "half_width": 0.4737979797979798,
+        "coverage": 0.953076923076923,
+        "hter": 0.0021498574096324497,
+        "apcer": 0.0016216216216216215,
+        "bpcer": 0.002678093197643278
+      },
+      {
+        "half_width": 0.47883838383838384,
+        "coverage": 0.9474358974358974,
+        "hter": 0.0018935232305973197,
+        "apcer": 0.0016295491580662683,
+        "bpcer": 0.002157497303128371
+      },
+      {
+        "half_width": 0.4838787878787879,
+        "coverage": 0.9392307692307692,
+        "hter": 0.0016380222695902336,
+        "apcer": 0.0016438356164383563,
+        "bpcer": 0.001632208922742111
+      },
+      {
+        "half_width": 0.4889191919191919,
+        "coverage": 0.9284615384615384,
+        "hter": 0.0013789930543902928,
+        "apcer": 0.0011123470522803114,
+        "bpcer": 0.0016456390565002743
+      },
+      {
+        "half_width": 0.493959595959596,
+        "coverage": 0.9092307692307692,
+        "hter": 0.000849825007954184,
+        "apcer": 0.001142857142857143,
+        "bpcer": 0.0005567928730512249
+      },
+      {
+        "half_width": 0.499,
+        "coverage": 0.8376923076923077,
+        "hter": 0.000630119722747322,
+        "apcer": 0.001260239445494644,
+        "bpcer": 0.0
+      }
+    ]
+  },
+  "masked_eval": {
+    "protocol": "RAW test images (live+spoof) with a synthetic surgical-mask overlay (nose-to-chin, white/light_blue/black), then BLAZEFACE-ONLY detection (no bbox fallback -- see consistency_notes). The unmasked baseline here uses the SAME BlazeFace-only methodology for a fair comparison, and is NOT the canonical headline number.",
+    "n_total_raw_images": 3900,
+    "mask_synthesis_failures": 171,
+    "stage1_on_masked": {
+      "n_eligible": 3729,
+      "n_detected": 3676,
+      "n_missed": 53,
+      "detection_rate": 0.9857870742826496
+    },
+    "masked_metrics": {
+      "n": 3676,
+      "accuracy": 0.984221980413493,
+      "apcer": 0.009428729894620078,
+      "bpcer": 0.02189001601708489,
+      "hter": 0.015659372955852485,
+      "n_live": 1873,
+      "n_spoof": 1803
+    },
+    "unmasked_baseline_metrics": {
+      "accuracy": 0.9903620734566293,
+      "apcer": 0.01209889531825355,
+      "bpcer": 0.007223942208462332,
+      "hter": 0.00966141876335794
+    },
+    "unmasked_baseline_protocol": "Same 3,900-image test set, but using ONLY live BlazeFace detection -- no bbox fallback. Images where BlazeFace finds no face get NO decision at all (matching true live-webcam behavior, where no official bounding box exists to fall back to). n < 3900; see 'n' and 'coverage' fields for the exact count.",
+    "bpcer_flag_triggered": false,
+    "v3_retraining_estimate_if_flagged": null,
+    "per_spoof_type_apcer_masked": {
+      "3D Mask": {
+        "n": 174,
+        "apcer": 0.011494252873563218
+      },
+      "paper upper-body-mask attack": {
+        "n": 179,
+        "apcer": 0.00558659217877095
+      },
+      "Photo": {
+        "n": 177,
+        "apcer": 0.01694915254237288
+      },
+      "PC": {
+        "n": 209,
+        "apcer": 0.014354066985645933
+      },
+      "Poster": {
+        "n": 160,
+        "apcer": 0.0125
+      },
+      "A4": {
+        "n": 178,
+        "apcer": 0.0056179775280898875
+      },
+      "paper face-mask attack": {
+        "n": 161,
+        "apcer": 0.0
+      },
+      "paper region-mask attack": {
+        "n": 218,
+        "apcer": 0.0045871559633027525
+      },
+      "Pad": {
+        "n": 176,
+        "apcer": 0.011363636363636364
+      },
+      "Phone": {
+        "n": 171,
+        "apcer": 0.011695906432748537
+      }
+    },
+    "gray_zone_on_masked": {
+      "band_low": 0.024217108554277167,
+      "band_high": 0.9757828914457228,
+      "coverage": 0.9303590859630033,
+      "n_uncertain": 256,
+      "decided_metrics": {
+        "n": 3420,
+        "accuracy": 0.997953216374269,
+        "apcer": 0.0011689070718877848,
+        "bpcer": 0.002925687536571094,
+        "hter": 0.0020472973042294394,
+        "n_live": 1709,
+        "n_spoof": 1711
+      }
+    }
+  },
+  "deployment_crop_eval_v2_blazeface_only": {
+    "protocol": "Same 3,900-image test set, but using ONLY live BlazeFace detection -- no bbox fallback. Images where BlazeFace finds no face get NO decision at all (matching true live-webcam behavior, where no official bounding box exists to fall back to). n < 3900; see 'n' and 'coverage' fields for the exact count.",
+    "checkpoint": "../models/v2_cropped/best_liveness.pth",
+    "n_total": 3900,
+    "n_detected": 3839,
+    "n_missed": 61,
+    "detection_rate": 0.9843589743589743,
+    "miss_rate": 0.01564102564102564,
+    "metrics_on_detected_subset": {
+      "accuracy": 0.9903620734566293,
+      "apcer": 0.01209889531825355,
+      "bpcer": 0.007223942208462332,
+      "hter": 0.00966141876335794
+    },
+    "baseline_raw_frame_accuracy": 0.9915384615384616,
+    "miss_rate_by_category": {
+      "LIVE": {
+        "total": 1950,
+        "missed": 12,
+        "miss_rate": 0.006153846153846154
+      },
+      "3D Mask": {
+        "total": 196,
+        "missed": 0,
+        "miss_rate": 0.0
+      },
+      "paper upper-body-mask attack": {
+        "total": 195,
+        "missed": 10,
+        "miss_rate": 0.05128205128205128
+      },
+      "Photo": {
+        "total": 182,
+        "missed": 1,
+        "miss_rate": 0.005494505494505495
+      },
+      "PC": {
+        "total": 229,
+        "missed": 7,
+        "miss_rate": 0.03056768558951965
+      },
+      "Poster": {
+        "total": 177,
+        "missed": 10,
+        "miss_rate": 0.05649717514124294
+      },
+      "A4": {
+        "total": 186,
+        "missed": 3,
+        "miss_rate": 0.016129032258064516
+      },
+      "paper face-mask attack": {
+        "total": 172,
+        "missed": 0,
+        "miss_rate": 0.0
+      },
+      "paper region-mask attack": {
+        "total": 224,
+        "missed": 0,
+        "miss_rate": 0.0
+      },
+      "Pad": {
+        "total": 180,
+        "missed": 0,
+        "miss_rate": 0.0
+      },
+      "Phone": {
+        "total": 209,
+        "missed": 18,
+        "miss_rate": 0.0861244019138756
+      }
+    }
+  },
+  "crop_dataset_build_stats": {
+    "stats_by_split": {
+      "train": {
+        "blazeface": 17880,
+        "bbox_fallback": 320,
+        "failed": 0,
+        "by_spoof_type": {
+          "LIVE": {
+            "blazeface": 9004,
+            "bbox_fallback": 96,
+            "failed": 0
+          },
+          "PC": {
+            "blazeface": 1014,
+            "bbox_fallback": 19,
+            "failed": 0
+          },
+          "3D Mask": {
+            "blazeface": 911,
+            "bbox_fallback": 3,
+            "failed": 0
+          },
+          "Photo": {
+            "blazeface": 865,
+            "bbox_fallback": 3,
+            "failed": 0
+          },
+          "paper upper-body-mask attack": {
+            "blazeface": 786,
+            "bbox_fallback": 39,
+            "failed": 0
+          },
+          "Poster": {
+            "blazeface": 815,
+            "bbox_fallback": 38,
+            "failed": 0
+          },
+          "A4": {
+            "blazeface": 822,
+            "bbox_fallback": 18,
+            "failed": 0
+          },
+          "paper face-mask attack": {
+            "blazeface": 949,
+            "bbox_fallback": 3,
+            "failed": 0
+          },
+          "paper region-mask attack": {
+            "blazeface": 889,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "Pad": {
+            "blazeface": 950,
+            "bbox_fallback": 4,
+            "failed": 0
+          },
+          "Phone": {
+            "blazeface": 875,
+            "bbox_fallback": 97,
+            "failed": 0
+          }
+        }
+      },
+      "val": {
+        "blazeface": 3843,
+        "bbox_fallback": 57,
+        "failed": 0,
+        "by_spoof_type": {
+          "LIVE": {
+            "blazeface": 1935,
+            "bbox_fallback": 15,
+            "failed": 0
+          },
+          "3D Mask": {
+            "blazeface": 204,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "Photo": {
+            "blazeface": 167,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "paper upper-body-mask attack": {
+            "blazeface": 165,
+            "bbox_fallback": 7,
+            "failed": 0
+          },
+          "PC": {
+            "blazeface": 240,
+            "bbox_fallback": 4,
+            "failed": 0
+          },
+          "Poster": {
+            "blazeface": 179,
+            "bbox_fallback": 9,
+            "failed": 0
+          },
+          "A4": {
+            "blazeface": 171,
+            "bbox_fallback": 6,
+            "failed": 0
+          },
+          "paper face-mask attack": {
+            "blazeface": 190,
+            "bbox_fallback": 3,
+            "failed": 0
+          },
+          "paper region-mask attack": {
+            "blazeface": 231,
+            "bbox_fallback": 1,
+            "failed": 0
+          },
+          "Pad": {
+            "blazeface": 202,
+            "bbox_fallback": 1,
+            "failed": 0
+          },
+          "Phone": {
+            "blazeface": 159,
+            "bbox_fallback": 11,
+            "failed": 0
+          }
+        }
+      },
+      "test": {
+        "blazeface": 3839,
+        "bbox_fallback": 61,
+        "failed": 0,
+        "by_spoof_type": {
+          "LIVE": {
+            "blazeface": 1938,
+            "bbox_fallback": 12,
+            "failed": 0
+          },
+          "3D Mask": {
+            "blazeface": 196,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "paper upper-body-mask attack": {
+            "blazeface": 185,
+            "bbox_fallback": 10,
+            "failed": 0
+          },
+          "Photo": {
+            "blazeface": 181,
+            "bbox_fallback": 1,
+            "failed": 0
+          },
+          "PC": {
+            "blazeface": 222,
+            "bbox_fallback": 7,
+            "failed": 0
+          },
+          "Poster": {
+            "blazeface": 167,
+            "bbox_fallback": 10,
+            "failed": 0
+          },
+          "A4": {
+            "blazeface": 183,
+            "bbox_fallback": 3,
+            "failed": 0
+          },
+          "paper face-mask attack": {
+            "blazeface": 172,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "paper region-mask attack": {
+            "blazeface": 224,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "Pad": {
+            "blazeface": 180,
+            "bbox_fallback": 0,
+            "failed": 0
+          },
+          "Phone": {
+            "blazeface": 191,
+            "bbox_fallback": 18,
+            "failed": 0
+          }
+        }
+      }
+    },
+    "failed_files": []
+  }
+}

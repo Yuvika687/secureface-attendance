@@ -1,0 +1,109 @@
+{
+  "backbone": "mobilenet_v3_small",
+  "checkpoint": "../models/v2_cropped/best_liveness.pth",
+  "source_mapping_url": "https://github.com/ZhangYuanhan-AI/CelebA-Spoof/blob/master/README.md",
+  "note": "Illumination/environment breakdowns are computed over spoof images only (live images carry no real illumination/environment code in this dataset's own annotations -- verified directly on the raw label data). Only APCER is reported for those two breakdowns, not BPCER/accuracy, since there is no live subgroup within a single illumination/environment bucket to compute them against.",
+  "low_confidence_threshold_n": 50,
+  "spoof_type_breakdown": [
+    {
+      "name": "Photo",
+      "n": 182,
+      "apcer": 0.01098901098901099,
+      "low_confidence": false
+    },
+    {
+      "name": "Poster",
+      "n": 177,
+      "apcer": 0.011299435028248588,
+      "low_confidence": false
+    },
+    {
+      "name": "A4",
+      "n": 186,
+      "apcer": 0.010752688172043012,
+      "low_confidence": false
+    },
+    {
+      "name": "paper face-mask attack",
+      "n": 172,
+      "apcer": 0.0,
+      "low_confidence": false
+    },
+    {
+      "name": "paper upper-body-mask attack",
+      "n": 195,
+      "apcer": 0.010256410256410256,
+      "low_confidence": false
+    },
+    {
+      "name": "paper region-mask attack",
+      "n": 224,
+      "apcer": 0.008928571428571428,
+      "low_confidence": false
+    },
+    {
+      "name": "PC",
+      "n": 229,
+      "apcer": 0.03056768558951965,
+      "low_confidence": false
+    },
+    {
+      "name": "Pad",
+      "n": 180,
+      "apcer": 0.022222222222222223,
+      "low_confidence": false
+    },
+    {
+      "name": "Phone",
+      "n": 209,
+      "apcer": 0.019138755980861243,
+      "low_confidence": false
+    },
+    {
+      "name": "3D Mask",
+      "n": 196,
+      "apcer": 0.01020408163265306,
+      "low_confidence": false
+    }
+  ],
+  "illumination_breakdown": [
+    {
+      "name": "Normal",
+      "n": 1198,
+      "apcer": 0.012520868113522538,
+      "low_confidence": false
+    },
+    {
+      "name": "Strong",
+      "n": 332,
+      "apcer": 0.015060240963855422,
+      "low_confidence": false
+    },
+    {
+      "name": "Back",
+      "n": 224,
+      "apcer": 0.022321428571428572,
+      "low_confidence": false
+    },
+    {
+      "name": "Dark",
+      "n": 196,
+      "apcer": 0.01020408163265306,
+      "low_confidence": false
+    }
+  ],
+  "environment_breakdown": [
+    {
+      "name": "Indoor",
+      "n": 1498,
+      "apcer": 0.012683578104138851,
+      "low_confidence": false
+    },
+    {
+      "name": "Outdoor",
+      "n": 452,
+      "apcer": 0.017699115044247787,
+      "low_confidence": false
+    }
+  ]
+}

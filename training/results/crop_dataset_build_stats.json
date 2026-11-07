@@ -1,0 +1,191 @@
+{
+  "stats_by_split": {
+    "train": {
+      "blazeface": 17880,
+      "bbox_fallback": 320,
+      "failed": 0,
+      "by_spoof_type": {
+        "LIVE": {
+          "blazeface": 9004,
+          "bbox_fallback": 96,
+          "failed": 0
+        },
+        "PC": {
+          "blazeface": 1014,
+          "bbox_fallback": 19,
+          "failed": 0
+        },
+        "3D Mask": {
+          "blazeface": 911,
+          "bbox_fallback": 3,
+          "failed": 0
+        },
+        "Photo": {
+          "blazeface": 865,
+          "bbox_fallback": 3,
+          "failed": 0
+        },
+        "paper upper-body-mask attack": {
+          "blazeface": 786,
+          "bbox_fallback": 39,
+          "failed": 0
+        },
+        "Poster": {
+          "blazeface": 815,
+          "bbox_fallback": 38,
+          "failed": 0
+        },
+        "A4": {
+          "blazeface": 822,
+          "bbox_fallback": 18,
+          "failed": 0
+        },
+        "paper face-mask attack": {
+          "blazeface": 949,
+          "bbox_fallback": 3,
+          "failed": 0
+        },
+        "paper region-mask attack": {
+          "blazeface": 889,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "Pad": {
+          "blazeface": 950,
+          "bbox_fallback": 4,
+          "failed": 0
+        },
+        "Phone": {
+          "blazeface": 875,
+          "bbox_fallback": 97,
+          "failed": 0
+        }
+      }
+    },
+    "val": {
+      "blazeface": 3843,
+      "bbox_fallback": 57,
+      "failed": 0,
+      "by_spoof_type": {
+        "LIVE": {
+          "blazeface": 1935,
+          "bbox_fallback": 15,
+          "failed": 0
+        },
+        "3D Mask": {
+          "blazeface": 204,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "Photo": {
+          "blazeface": 167,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "paper upper-body-mask attack": {
+          "blazeface": 165,
+          "bbox_fallback": 7,
+          "failed": 0
+        },
+        "PC": {
+          "blazeface": 240,
+          "bbox_fallback": 4,
+          "failed": 0
+        },
+        "Poster": {
+          "blazeface": 179,
+          "bbox_fallback": 9,
+          "failed": 0
+        },
+        "A4": {
+          "blazeface": 171,
+          "bbox_fallback": 6,
+          "failed": 0
+        },
+        "paper face-mask attack": {
+          "blazeface": 190,
+          "bbox_fallback": 3,
+          "failed": 0
+        },
+        "paper region-mask attack": {
+          "blazeface": 231,
+          "bbox_fallback": 1,
+          "failed": 0
+        },
+        "Pad": {
+          "blazeface": 202,
+          "bbox_fallback": 1,
+          "failed": 0
+        },
+        "Phone": {
+          "blazeface": 159,
+          "bbox_fallback": 11,
+          "failed": 0
+        }
+      }
+    },
+    "test": {
+      "blazeface": 3839,
+      "bbox_fallback": 61,
+      "failed": 0,
+      "by_spoof_type": {
+        "LIVE": {
+          "blazeface": 1938,
+          "bbox_fallback": 12,
+          "failed": 0
+        },
+        "3D Mask": {
+          "blazeface": 196,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "paper upper-body-mask attack": {
+          "blazeface": 185,
+          "bbox_fallback": 10,
+          "failed": 0
+        },
+        "Photo": {
+          "blazeface": 181,
+          "bbox_fallback": 1,
+          "failed": 0
+        },
+        "PC": {
+          "blazeface": 222,
+          "bbox_fallback": 7,
+          "failed": 0
+        },
+        "Poster": {
+          "blazeface": 167,
+          "bbox_fallback": 10,
+          "failed": 0
+        },
+        "A4": {
+          "blazeface": 183,
+          "bbox_fallback": 3,
+          "failed": 0
+        },
+        "paper face-mask attack": {
+          "blazeface": 172,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "paper region-mask attack": {
+          "blazeface": 224,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "Pad": {
+          "blazeface": 180,
+          "bbox_fallback": 0,
+          "failed": 0
+        },
+        "Phone": {
+          "blazeface": 191,
+          "bbox_fallback": 18,
+          "failed": 0
+        }
+      }
+    }
+  },
+  "failed_files": []
+}

@@ -1,0 +1,125 @@
+{
+  "v1_checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/best_liveness.pth",
+  "v2_checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/best_liveness.pth",
+  "evaluation_data": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/data/celeba_spoof_cropped/test (both models, same deployment-style crops)",
+  "v1_metrics_on_deployment_crops": {
+    "accuracy": 0.9453846153846154,
+    "apcer": 0.07743589743589743,
+    "bpcer": 0.031794871794871796,
+    "hter": 0.054615384615384614,
+    "n_live": 1950,
+    "n_spoof": 1950,
+    "precision_live": 0.9259440902403139,
+    "recall_live": 0.9682051282051282,
+    "f1_live": 0.9466031586863876,
+    "precision_spoof": 0.9666845781837722,
+    "recall_spoof": 0.9225641025641026,
+    "f1_spoof": 0.9441091577013907
+  },
+  "v2_metrics_on_deployment_crops": {
+    "accuracy": 0.9869230769230769,
+    "apcer": 0.013846153846153847,
+    "bpcer": 0.012307692307692308,
+    "hter": 0.013076923076923076,
+    "n_live": 1950,
+    "n_spoof": 1950,
+    "precision_live": 0.9861751152073732,
+    "recall_live": 0.9876923076923076,
+    "f1_live": 0.9869331283627979,
+    "precision_spoof": 0.987673343605547,
+    "recall_spoof": 0.9861538461538462,
+    "f1_spoof": 0.9869130100076983
+  },
+  "v1_per_attack_type_apcer": {
+    "3D Mask": {
+      "n": 196,
+      "apcer": 0.08163265306122448
+    },
+    "paper upper-body-mask attack": {
+      "n": 195,
+      "apcer": 0.03076923076923077
+    },
+    "Photo": {
+      "n": 182,
+      "apcer": 0.13736263736263737
+    },
+    "PC": {
+      "n": 229,
+      "apcer": 0.13100436681222707
+    },
+    "Poster": {
+      "n": 177,
+      "apcer": 0.096045197740113
+    },
+    "A4": {
+      "n": 186,
+      "apcer": 0.07526881720430108
+    },
+    "paper face-mask attack": {
+      "n": 172,
+      "apcer": 0.01744186046511628
+    },
+    "paper region-mask attack": {
+      "n": 224,
+      "apcer": 0.022321428571428572
+    },
+    "Pad": {
+      "n": 180,
+      "apcer": 0.08333333333333333
+    },
+    "Phone": {
+      "n": 209,
+      "apcer": 0.09569377990430622
+    }
+  },
+  "v2_per_attack_type_apcer": {
+    "3D Mask": {
+      "n": 196,
+      "apcer": 0.01020408163265306
+    },
+    "paper upper-body-mask attack": {
+      "n": 195,
+      "apcer": 0.010256410256410256
+    },
+    "Photo": {
+      "n": 182,
+      "apcer": 0.01098901098901099
+    },
+    "PC": {
+      "n": 229,
+      "apcer": 0.03056768558951965
+    },
+    "Poster": {
+      "n": 177,
+      "apcer": 0.011299435028248588
+    },
+    "A4": {
+      "n": 186,
+      "apcer": 0.010752688172043012
+    },
+    "paper face-mask attack": {
+      "n": 172,
+      "apcer": 0.0
+    },
+    "paper region-mask attack": {
+      "n": 224,
+      "apcer": 0.008928571428571428
+    },
+    "Pad": {
+      "n": 180,
+      "apcer": 0.022222222222222223
+    },
+    "Phone": {
+      "n": 209,
+      "apcer": 0.019138755980861243
+    }
+  },
+  "note_v1_raw_frame_baseline_accuracy": 0.9915384615384616,
+  "note_v1_on_deployment_crops_prior_measurement": {
+    "accuracy": 0.9594,
+    "apcer": 0.061,
+    "bpcer": 0.0206,
+    "hter": 0.0408,
+    "source": "results/deployment_crop_eval.json (TASK F, live BlazeFace detection on raw frames)"
+  }
+}

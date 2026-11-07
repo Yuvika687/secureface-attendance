@@ -1,0 +1,166 @@
+{
+  "checkpoint": "/Users/yuvikamalhotra/Documents/project/anti_spoof_attendance/models/v2_cropped/best_liveness.pth",
+  "mask_colors_cycled": [
+    "white",
+    "light_blue",
+    "black"
+  ],
+  "n_total": 3900,
+  "mask_synthesis_failures": 171,
+  "mask_synthesis_failure_rate": 0.04384615384615385,
+  "stage1_on_masked": {
+    "n_eligible": 3729,
+    "n_detected": 3676,
+    "n_missed": 53,
+    "detection_rate": 0.9857870742826496
+  },
+  "stage2_masked_detected_subset": {
+    "n": 3676,
+    "accuracy": 0.984221980413493,
+    "apcer": 0.009428729894620078,
+    "bpcer": 0.02189001601708489,
+    "hter": 0.015659372955852485,
+    "n_live": 1873,
+    "n_spoof": 1803
+  },
+  "stage2_unmasked_baseline": {
+    "accuracy": 0.9903620734566293,
+    "apcer": 0.01209889531825355,
+    "bpcer": 0.007223942208462332,
+    "hter": 0.00966141876335794
+  },
+  "bpcer_live_masked_flag": false,
+  "v3_retraining_estimate_if_flagged": null,
+  "per_spoof_type_apcer_masked": {
+    "3D Mask": {
+      "n": 174,
+      "apcer": 0.011494252873563218
+    },
+    "paper upper-body-mask attack": {
+      "n": 179,
+      "apcer": 0.00558659217877095
+    },
+    "Photo": {
+      "n": 177,
+      "apcer": 0.01694915254237288
+    },
+    "PC": {
+      "n": 209,
+      "apcer": 0.014354066985645933
+    },
+    "Poster": {
+      "n": 160,
+      "apcer": 0.0125
+    },
+    "A4": {
+      "n": 178,
+      "apcer": 0.0056179775280898875
+    },
+    "paper face-mask attack": {
+      "n": 161,
+      "apcer": 0.0
+    },
+    "paper region-mask attack": {
+      "n": 218,
+      "apcer": 0.0045871559633027525
+    },
+    "Pad": {
+      "n": 176,
+      "apcer": 0.011363636363636364
+    },
+    "Phone": {
+      "n": 171,
+      "apcer": 0.011695906432748537
+    }
+  },
+  "gray_zone_masked": {
+    "band_low": 0.024217108554277167,
+    "band_high": 0.9757828914457228,
+    "coverage": 0.9303590859630033,
+    "n_uncertain": 256,
+    "decided_metrics": {
+      "n": 3420,
+      "accuracy": 0.997953216374269,
+      "apcer": 0.0011689070718877848,
+      "bpcer": 0.002925687536571094,
+      "hter": 0.0020472973042294394,
+      "n_live": 1709,
+      "n_spoof": 1711
+    }
+  },
+  "examples_saved": [
+    {
+      "file": "00_white_live_train_1686_001151.jpg.png",
+      "color": "white",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/train_1686_001151.jpg"
+    },
+    {
+      "file": "01_white_live_test_7036_000466.png.png",
+      "color": "white",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/test_7036_000466.png"
+    },
+    {
+      "file": "02_white_spoof_train_4788_001054.jpg.png",
+      "color": "white",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/train_4788_001054.jpg"
+    },
+    {
+      "file": "03_white_spoof_train_4199_001005.jpg.png",
+      "color": "white",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/train_4199_001005.jpg"
+    },
+    {
+      "file": "04_light_blue_live_train_3511_000827.jpg.png",
+      "color": "light_blue",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/train_3511_000827.jpg"
+    },
+    {
+      "file": "05_light_blue_live_train_2099_001514.jpg.png",
+      "color": "light_blue",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/train_2099_001514.jpg"
+    },
+    {
+      "file": "06_light_blue_spoof_train_1836_001821.jpg.png",
+      "color": "light_blue",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/train_1836_001821.jpg"
+    },
+    {
+      "file": "07_light_blue_spoof_train_9242_001882.jpg.png",
+      "color": "light_blue",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/train_9242_001882.jpg"
+    },
+    {
+      "file": "08_black_live_train_1310_000153.jpg.png",
+      "color": "black",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/train_1310_000153.jpg"
+    },
+    {
+      "file": "09_black_live_train_9699_000586.jpg.png",
+      "color": "black",
+      "true_label": "live",
+      "source_file": "../data/celeba_spoof/test/live/train_9699_000586.jpg"
+    },
+    {
+      "file": "10_black_spoof_train_6982_001525.jpg.png",
+      "color": "black",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/train_6982_001525.jpg"
+    },
+    {
+      "file": "11_black_spoof_test_8694_000749.png.png",
+      "color": "black",
+      "true_label": "spoof",
+      "source_file": "../data/celeba_spoof/test/spoof/test_8694_000749.png"
+    }
+  ],
+  "total_runtime_seconds": 214.0478057861328
+}
