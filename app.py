@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from config import Config
 from database.db import get_db_connection, init_db, get_setting, set_setting, _DEFAULT_SETTINGS
-from utils.face_utils import register_face, recognize_face_with_liveness, data_uri_to_cv2_img
+from utils.face_utils import register_face, recognize_face_with_liveness, data_uri_to_cv2_img, REGISTER_REJECTED_IDENTITY
 from utils.validators import (
     validate_registration, validate_profile_update, validate_name,
     validate_employee_id, validate_email, validate_phone, validate_password,
@@ -1098,6 +1098,9 @@ def api_register_face():
     base64_img = data.get("image")
 
     success = register_face(session["user_id"], base64_img)
+    if success == REGISTER_REJECTED_IDENTITY:
+        return jsonify({"success": False, "identity_rejected": True,
+                        "msg": "Only the account owner should be in front of the camera."}), 400
     if not success:
         return jsonify({"success": False, "msg": "No face detected. Please try again."}), 400
 

@@ -425,11 +425,20 @@ def compute_liveness_metrics(img_bgr, mesh_results):
 #  FACE REGISTRATION
 # ============================================================
 
+# register_face() return value when a sample is rejected because it doesn't
+# look like the account owner (see the identity check inside register_face()).
+REGISTER_REJECTED_IDENTITY = "identity_mismatch"
+
+
 def register_face(user_id, base64_img):
     """
     Register a face using ArcFace embedding via MediaPipe alignment.
     Stores 512-D embedding in database as JSON.
     Multiple embeddings per user for robustness.
+
+    Returns True (stored), False (no usable face), or
+    REGISTER_REJECTED_IDENTITY (sample rejected: it doesn't match this user's
+    already-stored samples, or it matches another registered person).
     """
     if _arcface_session is None:
         print("[Register] ArcFace model not loaded!")
@@ -469,6 +478,38 @@ def register_face(user_id, base64_img):
         except Exception:
             existing = []
 
+    # Identity check, using the same match limit recognition uses
+    # (admin-configurable face_tolerance setting, cosine similarity):
+    #   1. the new sample's average similarity to this user's stored samples
+    #      must reach the limit (skipped for the very first sample);
+    #   2. the new sample must NOT reach the limit against any OTHER fully
+    #      registered user's samples.
+    from database.db import get_setting
+    match_limit = float(get_setting('face_tolerance', '0.45'))
+    q = np.asarray(embedding, dtype=np.float32)
+    q = q / (np.linalg.norm(q) + 1e-10)
+
+    if existing:
+        own = np.array(existing, dtype=np.float32)
+        own = own / (np.linalg.norm(own, axis=1, keepdims=True) + 1e-10)
+        own_sim = float(np.mean(own @ q))
+        if own_sim < match_limit:
+            conn.close()
+            print(f"[Register] User {user_id}: sample REJECTED, avg sim to own "
+                  f"{len(existing)} samples={own_sim:.3f} < {match_limit}")
+            return REGISTER_REJECTED_IDENTITY
+
+    for other_id, other_embs in _ensure_cache().items():
+        if other_id == user_id:
+            continue
+        others = other_embs / (np.linalg.norm(other_embs, axis=1, keepdims=True) + 1e-10)
+        other_sim = float(np.max(others @ q))
+        if other_sim >= match_limit:
+            conn.close()
+            print(f"[Register] User {user_id}: sample REJECTED, matches user "
+                  f"{other_id} (sim={other_sim:.3f} >= {match_limit})")
+            return REGISTER_REJECTED_IDENTITY
+
     existing.append(embedding.tolist())
 
     MAX_EMBEDDINGS = 15
@@ -478,7 +519,6 @@ def register_face(user_id, base64_img):
     # face_registered only flips to 1 once at least `min_face_samples`
     # embeddings are stored -- previously this was set after a single
     # sample, making the min_face_samples setting have no real effect.
-    from database.db import get_setting
     min_samples = int(get_setting('min_face_samples', '5'))
     is_fully_registered = 1 if len(existing) >= min_samples else 0
 

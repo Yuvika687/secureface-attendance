@@ -352,6 +352,9 @@
                     setTimeout(() => window.location.reload(), 2000);
                     return true;
                 }
+            } else if (result.identity_rejected) {
+                instruction.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + result.msg;
+                instruction.style.color = 'var(--accent-rose)';
             } else {
                 instruction.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> No face detected. Adjust position...';
                 instruction.style.color = 'var(--accent-gold)';
