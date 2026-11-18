@@ -98,6 +98,21 @@ if not Config.USE_POSTGRES:
         except Exception:
             pass
         try:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS admin_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_user_id INTEGER NOT NULL,
+                    admin_email TEXT,
+                    action TEXT NOT NULL,
+                    detail TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        except Exception:
+            pass
+        try:
             conn.execute("SELECT test_label FROM scan_events LIMIT 1")
         except Exception:
             try:
@@ -178,6 +193,15 @@ def is_late(time_str):
 
 RECENT_PROBS_WINDOW = 5          # frames averaged for the smoothed P(spoof)
 FACE_MOVE_REJECT_RATIO = 0.6     # center displacement > 60% of face size => treat as a different physical subject
+# Word the admin must type to confirm /admin/wipe_model (sent as JSON "confirm").
+WIPE_CONFIRM_WORD = "WIPE"
+
+# Scanner result messages (one per outcome).
+MSG_ATTENDANCE_MARKED = "Attendance marked"
+MSG_ALREADY_MARKED = "Already marked today"
+MSG_FACE_NOT_RECOGNIZED = "Face not recognized — if you're wearing a mask, please remove it and try again."
+MSG_ACCOUNT_MISMATCH = "This face doesn't match this account"
+
 CHALLENGE_TIMEOUT_SECONDS = 8    # max wait for one natural blink before silently restarting the attempt
 
 
@@ -1028,11 +1052,30 @@ def scanner():
 def admin_wipe_model():
     if session.get("role") != "admin":
         return jsonify({"success": False, "msg": "Unauthorized"})
-    
+
+    # Typed confirmation word required -- this deletes every user's face
+    # data and ALL attendance rows.
+    data = request.get_json(silent=True) or {}
+    if str(data.get("confirm", "")).strip() != WIPE_CONFIRM_WORD:
+        return jsonify({
+            "success": False,
+            "msg": f'Confirmation required: type "{WIPE_CONFIRM_WORD}" to wipe all face data and attendance.',
+        }), 400
+
     conn = get_db_connection()
+    admin = conn.execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    faces = conn.execute("SELECT COUNT(*) AS n FROM users WHERE face_registered = 1").fetchone()["n"]
+    rows = conn.execute("SELECT COUNT(*) AS n FROM attendance").fetchone()["n"]
     conn.execute('UPDATE users SET face_registered = 0, face_embedding = NULL')
     conn.execute('DELETE FROM attendance')
+    conn.execute(
+        "INSERT INTO admin_audit_log (admin_user_id, admin_email, action, detail, ip_address) VALUES (?, ?, ?, ?, ?)",
+        (session["user_id"], admin["email"] if admin else None, "WIPE_MODEL",
+         f"face_registered_users_cleared={faces} attendance_rows_deleted={rows}", request.remote_addr),
+    )
     conn.commit()
+    app.logger.warning("WIPE_MODEL by admin user_id=%s email=%s ip=%s (faces=%s attendance_rows=%s)",
+                       session["user_id"], admin["email"] if admin else None, request.remote_addr, faces, rows)
     conn.close()
     
     # Invalidate in-memory embedding cache
@@ -1246,6 +1289,22 @@ def api_recognize_face():
             if not user_info:
                 return jsonify({"success": False, "recognized": False, "state": "LIVE", "timings": timings, "face_box": face_box, "msg": "User not found."})
 
+            # Logged-in student: only their own face may mark attendance.
+            # The public scanner (no student session) still recognizes anyone.
+            if session.get("role") == "employee" and user_id != session.get("user_id"):
+                session.pop('challenge_type', None)
+                session.pop('challenge_user', None)
+                session.pop('challenge_assigned_at', None)
+                _log_scan_event("UNRECOGNIZED", user_id=session.get("user_id"),
+                                 detail=f"account_mismatch matched_user_id={user_id}", test_label=test_label)
+                return jsonify({
+                    "success": False, "recognized": False, "state": "LIVE",
+                    "face_found": True, "account_mismatch": True,
+                    "p_spoof": round(smoothed_prob_spoof, 4),
+                    "timings": timings, "face_box": face_box,
+                    "msg": MSG_ACCOUNT_MISMATCH,
+                })
+
             # Silent natural-blink check (no visible instruction -- see the
             # commit message / chat for the honest replay-attack tradeoff
             # this involves vs. the previous random blink/turn_left/
@@ -1300,7 +1359,7 @@ def api_recognize_face():
                                  dedup=False, test_label=test_label)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
-                    "msg": f"{user_info['name']} — attendance marked ({status}).",
+                    "msg": MSG_ATTENDANCE_MARKED,
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -1316,7 +1375,7 @@ def api_recognize_face():
                                  dedup=False, test_label=test_label)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
-                    "msg": f"{user_info['name']} — already checked in today.",
+                    "msg": MSG_ALREADY_MARKED,
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -1332,7 +1391,7 @@ def api_recognize_face():
             "face_found": True, "liveness_metrics": liveness_metrics,
             "p_spoof": round(smoothed_prob_spoof, 4),
             "confidence": confidence, "timings": timings, "face_box": face_box,
-            "msg": "Face not recognized — please register first.",
+            "msg": MSG_FACE_NOT_RECOGNIZED,
         })
 
     except Exception as e:

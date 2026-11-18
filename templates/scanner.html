@@ -607,7 +607,7 @@
                             // the heading matches what actually happened instead
                             // of always claiming "Access Granted".
                             let heading = res.status !== undefined ? "Access Granted" : "Welcome Back";
-                            setCamStatus(avatar + `<div>${heading}</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}</span>`, "success");
+                            setCamStatus(avatar + `<div>${heading}</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.user} — ${res.msg}${res.status ? ` (${res.status})` : ''}</span>`, "success");
                             updateFaceBox(res.face_box || null);
 
                             setTimeout(() => {
@@ -627,9 +627,12 @@
                             updateFaceBox(res.face_box || null);
                         }
                     } else if(res.face_found) {
+                        // Message text comes from the server (one message per
+                        // outcome). Account mismatch gets no register link.
                         setCamStatus(
-                            "Face Not Recognized",
-                            "⚠️ Please <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>register</a> first.",
+                            res.msg || "Face not recognized",
+                            res.account_mismatch ? "" :
+                                "Not registered? <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>Register</a> first.",
                             "unregistered"
                         );
                         updateFaceBox(res.face_box || null);

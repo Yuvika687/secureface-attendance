@@ -204,6 +204,18 @@ def _init_sqlite():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Audit trail for destructive admin actions (currently /admin/wipe_model):
+    -- who did it and when.
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_user_id INTEGER NOT NULL,
+        admin_email TEXT,
+        action TEXT NOT NULL,
+        detail TEXT,
+        ip_address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Performance indexes for 500+ employee scale
     CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);

@@ -60,6 +60,18 @@ CREATE TABLE IF NOT EXISTS scan_events (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Audit trail for destructive admin actions (currently /admin/wipe_model):
+-- who did it and when.
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id SERIAL PRIMARY KEY,
+    admin_user_id INTEGER NOT NULL,
+    admin_email TEXT,
+    action TEXT NOT NULL,
+    detail TEXT,
+    ip_address TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Performance indexes for 500+ employee scale
 -- The attendance lookup (user_id + date) is the most frequent query in the system
 CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
