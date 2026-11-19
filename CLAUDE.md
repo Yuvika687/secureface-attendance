@@ -4,141 +4,114 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Flask face-recognition attendance app with a self-trained liveness/anti-spoofing model
-in front of the recognition step. It's a merge of two separate prior projects: a Flask
-attendance app (originally "SmartFace") and a trained MobileNetV3-Small liveness
-classifier (trained in `training/`, originally a separate project called
-`anti_spoof_attendance`). See `README.md` for the full pipeline/architecture explanation
-and `docs/HANDOVER.md` for a detailed, fact-checked project history (decisions made and
-why, known issues, pending tasks) — read `docs/HANDOVER.md` before assuming anything
-about "why" something is built a certain way.
+A Flask face-recognition attendance app ("SecureFace Attendance") with a self-trained
+liveness/anti-spoofing model (MobileNetV3-Small, trained in `training/`) in front of
+ArcFace recognition. It has three parts: a **common scanner** (`/`, admin-approved devices
+only), **student pages** (register, register face once, view own attendance) and **admin
+pages** (attendance, students, settings, scanner devices, logs, Results, Test Mode,
+Pipeline View). Read `docs/HANDOVER.md` before assuming anything about *why* something is
+built a certain way.
 
 ## Commands
 
 ```bash
-# Setup
-python3 -m venv venv
+# Setup (Python 3.13; the venv runs 3.13.15)
+python3.13 -m venv venv
 ./venv/bin/pip install -r requirements.txt
-cp .env.example .env   # fill in SECRET_KEY, FACE_ENCRYPTION_KEY
+cp .env.example .env   # SECRET_KEY, FACE_ENCRYPTION_KEY
 
 # Run
-./venv/bin/python app.py                 # production-like
-FLASK_DEBUG=1 ./venv/bin/python app.py   # dev tools: scanner test-label dropdown,
-                                          # /admin/dev/clear_today_attendance, /admin/scan_log styling
+./venv/bin/python app.py                 # http://localhost:5000
+FLASK_DEBUG=1 ./venv/bin/python app.py   # + scanner test-label dropdown, /admin/dev/clear_today_attendance
 
-# Tests (one regression test: crop_face() output must stay byte-identical to the
-# original training project's crop function, or the liveness model sees differently
-# shaped input than it was trained on)
-./venv/bin/pytest -v
+# Tests: 59; each test uses a fresh temp DB, never database/smartface.db.
+# Sample images are read from the sibling anti_spoof_attendance project.
+./venv/bin/pytest -v                     # pytest.ini limits collection to tests/
 
-# Account creation (no hardcoded credentials anywhere)
+# Accounts (no hardcoded credentials)
 ./venv/bin/python scripts/create_admin.py
-./venv/bin/python scripts/create_test_student.py   # creates login only; face must be
-                                                     # registered via a real webcam after
-./venv/bin/python scripts/reset_password.py you@example.com   # local-only password reset
+./venv/bin/python scripts/create_test_student.py
+./venv/bin/python scripts/reset_password.py you@example.com
 
-# Real pipeline latency measurement against a running server
-./venv/bin/python scripts/measure_pipeline_latency.py
+# Real pipeline latency against a running server (scanner must be approved;
+# pass that browser's scanner_device cookie value)
+SCANNER_DEVICE_TOKEN=... ./venv/bin/python scripts/measure_pipeline_latency.py [base_url]
 
-# Regenerate the PDF project report
+# PDF report (numbers read from training/results/summary.json + docs/pipeline_latency_*.txt)
 ./venv/bin/python generate_report.py
 ```
 
-The venv's scripts (`pip`, `pytest`) have the absolute path baked into their shebang
-line — if this folder is ever moved/renamed again, recreate the venv rather than
-debugging "command not found" errors.
+After a fresh start, nothing is approved as a scanner: log in as admin on the scanner
+browser → Settings → Scanner Devices → "Set this device as scanner". Otherwise `/`
+returns 403 "This device is not an approved scanner."
 
-Default port is 5000; macOS's AirPlay Receiver also binds 5000 by default and can block
-the dev server from starting — `lsof -ti:5000 | xargs kill -9` or disable AirPlay
-Receiver in System Settings.
+Port 5000 can be taken by macOS AirPlay Receiver (`lsof -ti:5000 | xargs kill -9`).
+The camera works on `http://localhost` without HTTPS; for other devices use ngrok
+(`docs/ngrok.md`). The venv's scripts have absolute shebangs; if the folder moves,
+recreate the venv.
+
+**Verifying changes without touching real data:** copy the project (minus `venv/`, `.git`)
+to a scratch dir, `sqlite3 database/smartface.db ".backup <copy>/database/smartface.db"`,
+and run the copy with `<repo>/venv/bin/python -c "import app; app.app.run(port=...)"` from
+inside it (`Config.BASE_DIR` follows the copy).
 
 ## Architecture
 
-### The scan pipeline (the core of the app, in `app.py`'s `api_recognize_face()`)
+### Scan pipeline (`app.py` → `api_recognize_face()`)
 
-One POST to `/api/recognize_face` per webcam frame, each stage able to short-circuit:
+1. Approved-device check (`_current_scanner_device()`: SHA-256 of the `scanner_device` cookie in `scanner_devices`).
+2. BlazeFace detect (0 → `NO_FACE`, >1 → `MULTI_FACE`).
+3. Same-face tracking by **IoU** of consecutive face boxes; `< SAME_FACE_MIN_IOU` (0.25) → `FACE_MOVED`, session reset.
+4. `crop_face()` (`liveness/face_utils.py`, **must stay byte-identical** to training: 25% margin, 224×224, ImageNet norm; guarded by `tests/test_crop_identical.py`).
+5. MobileNetV3-Small → raw P(spoof); rolling 5-frame average **per Flask session** (never global).
+6. Gray-zone three-way decision (`liveness/weights/gray_zone_v2.json` band + `liveness_threshold` setting). Only SPOOF clears an in-progress blink; UNCERTAIN does not.
+7. Face Mesh + ArcFace **only on LIVE**.
+8. Logged-in student on the scanner → only their own face may proceed.
+9. Silent blink (client reports `liveness_verified`), 8 s window.
+10. Attendance (Present/Late), once per day. Each stage → `scan_events` with `p_spoof_frame`, `p_spoof_avg`, `iou`.
 
-1. Decode base64 JPEG → BlazeFace detect (0 faces → `NO_FACE`; >1 → `MULTI_FACE`)
-2. Same-face consistency check (face moved >60% of its own size → treat as a new subject,
-   reset session state)
-3. `crop_face()` (`liveness/face_utils.py`, **must stay byte-identical** to the original
-   training project's crop — 25% margin, 224×224, ImageNet normalization; this is what
-   `tests/test_crop_identical.py` guards)
-4. MobileNetV3-Small liveness classifier → raw `p_spoof` for this frame
-5. Rolling 5-frame average, kept **per Flask session cookie** (not global — a global
-   list used to leak liveness state between concurrent users; don't reintroduce that)
-6. Three-way decision via a **gray-zone band**, not a plain 0.5 cutoff:
-   `band_low <= p_spoof <= band_high` → `UNCERTAIN`; else `SPOOF` if `>= threshold`
-   else `LIVE`. Band is `liveness/weights/gray_zone_v2.json` (calibrated on a validation
-   set only, never test). `threshold` is the admin-configurable `liveness_threshold`
-   setting. **Only `SPOOF` clears the in-progress blink challenge; `UNCERTAIN` does
-   not** — this was a real bug fix (motion-blur UNCERTAIN blips used to force a fresh
-   challenge).
-7. Face Mesh + ArcFace recognition runs **only on `LIVE`**, never on SPOOF/UNCERTAIN —
-   confirmed by how the code branches, don't move recognition earlier in the pipeline.
-8. Silent single-blink check (eyes-closed→eyes-open via real EAR from Face Mesh), 8s
-   timeout. No visible challenge text (there used to be a randomized
-   blink/turn-left/turn-right prompt; removed in favor of this, which is a known,
-   deliberate tradeoff against video-replay — see `docs/HANDOVER.md` Section 5).
-9. Attendance marked (Present/Late by a configurable cutoff), every stage reached logged
-   to the `scan_events` table.
+### Admin-only tools (none of these mark attendance)
+- **Pipeline View** (`/admin/pipeline_view`): per-frame box/crop/224 input/score; Grad-CAM on demand via `utils/gradcam.py` (copied from `training/src/gradcam.py`) on a deep copy of the model, layer `feature_extractor.features[12]`. Saves nothing to disk.
+- **Test Mode** (`/admin/test_mode`): records real decisions per category into `test_mode_results`; APCER/BPCER/HTER from those counts. Collection mode saves crops to `data/domain_adaptation/` (gitignored) for `docs/domain_adaptation_plan.md`.
+- **Spoof Log** (CSV export), **Scan Log**, **Results** (reads `training/results/summary.json` at request time; separate live-test section).
 
-### Models (table in `README.md` / `docs/HANDOVER.md` Section 3)
-
-Only the **MobileNetV3-Small liveness classifier** (`liveness/weights/best_liveness.pth`)
-is self-trained — training code, eval scripts, and real result files are in `training/`.
-BlazeFace, MediaPipe FaceLandmarker, and ArcFace (`w600k_r50`) are all pretrained,
-auto-downloaded on first run (gitignored, not committed).
-
-### Config/thresholds are admin-tunable at runtime, not hardcoded
-
-`liveness_threshold`, `face_tolerance`, `min_face_samples`, late-cutoff time, and email
-settings all live in the `settings` DB table, read/written via `/settings`. **Never
-hand-edit these to make a specific test or face "pass"** — if a real threshold looks
-wrong (see the gray-zone band note in Known Issues below), report it with real data
-instead of retuning it unilaterally.
+### Config is admin-tunable, not hardcoded
+`liveness_threshold`, `face_tolerance`, `min_face_samples`, late cut-off and email settings
+live in the `settings` table (`/settings`). **Never hand-edit them to make a test or face
+pass.**
 
 ### Dual DB backend
+SQLite locally (`database/smartface.db`, gitignored), Postgres if `DATABASE_URL` is set.
+`database/db.py` (inline SQLite schema) and `database/schema.sql` (Postgres) must stay in
+sync, and new tables/columns also need an entry in `app.py`'s startup migration block for
+existing SQLite DBs. The Postgres path has never been run against a live instance.
 
-SQLite locally (`database/smartface.db`, gitignored), Postgres (Neon) in production —
-switched automatically by whether `DATABASE_URL` is set (`config.py`). `database/db.py`
-wraps both behind the same interface; `database/schema.sql` mirrors the inline SQLite
-schema for Postgres. The Postgres path has never been run against a live instance —
-treat it as implemented-but-unverified.
-
-### `training/` is a separate concern from the live app
-
-It's the model's own training/eval project (dataset prep, `train.py`, eval scripts, real
-result JSONs), kept for reproducibility — not imported or run by `app.py` at runtime.
-See `training/README.md` for the v1→v2 crop-mismatch bug/fix story and real
-accuracy/HTER numbers; don't quote numbers from anywhere else (there's a landing-page
-mockup in the original training project with several fabricated numbers — listed
-explicitly in `docs/HANDOVER.md` Section 4 as "numbers that must NOT be used").
+### `training/` is separate from the live app
+Training/eval code and real result files, not imported at runtime. Only quote numbers from
+`training/results/`: 98.69% accuracy, HTER 1.31% (APCER 1.38%, BPCER 1.23%), v1 → v2
+94.54% → 98.69%, and measured latency (`docs/pipeline_latency_2026-11-07.txt`). **Never** use
+99.15%, 0.85%, 26.7 FPS, 61.2% or 99.8% (fabricated by a design mockup).
 
 ## Known landmines
 
-- **`/admin/wipe_model`** (in `app.py`) deletes every user's face data and all
-  attendance rows, with no confirmation gate in the route itself. Pre-existing, not
-  something this merge added — be deliberate before touching it.
-- `generate_report.py`'s PDF **content** (not just branding) still describes a deleted
-  rule-based anti-spoofing system and an unverified accuracy claim — don't treat it as
-  a source of truth about the current system.
-- `templates/attendance.html` is orphaned (zero references anywhere) — confirmed by
-  grep, not yet explained or removed.
-- No mask-detection feature exists. Don't add mask-specific UI/messages without first
-  evaluating whether a reliable signal exists (see `docs/HANDOVER.md` Section 5) and
-  reporting that before building anything.
+- **`/admin/wipe_model`** deletes every user's face data and all attendance. It needs JSON
+  `{"confirm": "WIPE"}` and is audit-logged, but there is still no UI button for it.
+- **Domain shift.** Real webcam faces often land in the UNCERTAIN band, and a phone photo was
+  judged LIVE once. Don't retune thresholds ad hoc; follow `docs/domain_adaptation_plan.md`
+  (session 2 is test-only).
+- The blink result (`liveness_verified`) is trusted from the browser.
+- No mask detector exists. The "remove your mask" text is shown on every non-match, not
+  detected.
+- `mediapipe==0.10.30` is pinned exactly (newer crashes on Apple Silicon + Metal).
 
 ## Project rules (standing instructions from the project owner)
 
-1. No fake data, placeholder logic, or invented numbers anywhere — in code, UI, or
-   docs. Every number must trace to a real file or measurement.
+1. No fake data, placeholder logic or invented numbers anywhere.
 2. Never change detection thresholds to make a test or a specific face pass.
-3. Report findings and wait for approval before risky/ambiguous changes (thresholds,
-   security checks, anything destructive).
-4. `anti_spoof_attendance` and the original `Smart-Attendance-System-main` folders are
-   historical sources only — never modify them.
-5. If you ever touch `liveness/face_utils.py`, re-run `tests/test_crop_identical.py`
-   and confirm it still passes before committing.
-6. Show real, reproducible verification (curl/pytest/sqlite output, etc.) after every
-   change — not just a description of what was done.
+3. Report findings and wait for approval before risky/ambiguous changes (thresholds, security checks, anything destructive).
+4. Never modify `anti_spoof_attendance` or `Smart-Attendance-System-main`.
+5. Don't modify `liveness/` or the ArcFace matching logic unless the task is about them; if `liveness/face_utils.py` is touched, re-run `tests/test_crop_identical.py`.
+6. Show real, reproducible verification after every change; test on a scratch DB copy, never the real DB.
+7. Before each task: commit + tag `pre-<task>-YYYYMMDD`. After: pytest, start the app, check the pipeline on sample images, commit, push.
+8. Do only what the task asks: no extra refactoring, renaming or deletions.
+9. No co-author lines in commits.
