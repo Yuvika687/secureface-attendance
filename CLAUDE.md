@@ -24,7 +24,7 @@ cp .env.example .env   # SECRET_KEY, FACE_ENCRYPTION_KEY
 ./venv/bin/python app.py                 # http://localhost:5000
 FLASK_DEBUG=1 ./venv/bin/python app.py   # + scanner test-label dropdown, /admin/dev/clear_today_attendance
 
-# Tests: 59; each test uses a fresh temp DB, never database/smartface.db.
+# Tests: 67; each test uses a fresh temp DB, never database/smartface.db.
 # Sample images are read from the sibling anti_spoof_attendance project.
 ./venv/bin/pytest -v                     # pytest.ini limits collection to tests/
 
@@ -67,7 +67,7 @@ inside it (`Config.BASE_DIR` follows the copy).
 6. Gray-zone three-way decision (`liveness/weights/gray_zone_v2.json` band + `liveness_threshold` setting). Only SPOOF clears an in-progress blink; UNCERTAIN does not.
 7. Face Mesh + ArcFace **only on LIVE**.
 8. Logged-in student on the scanner → only their own face may proceed.
-9. Silent blink (client reports `liveness_verified`), 8 s window.
+9. Silent blink **verified server-side** (`_advance_blink`): open → closed → open from Face Mesh `eyes_closed` for the same user within 8 s. Any browser `liveness_verified` flag is ignored.
 10. Attendance (Present/Late), once per day. Each stage → `scan_events` with `p_spoof_frame`, `p_spoof_avg`, `iou`.
 
 ### Admin-only tools (none of these mark attendance)
@@ -99,7 +99,6 @@ Training/eval code and real result files, not imported at runtime. Only quote nu
 - **Domain shift.** Real webcam faces often land in the UNCERTAIN band, and a phone photo was
   judged LIVE once. Don't retune thresholds ad hoc; follow `docs/domain_adaptation_plan.md`
   (session 2 is test-only).
-- The blink result (`liveness_verified`) is trusted from the browser.
 - No mask detector exists. The "remove your mask" text is shown on every non-match, not
   detected.
 - `mediapipe==0.10.30` is pinned exactly (newer crashes on Apple Silicon + Metal).

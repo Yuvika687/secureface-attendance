@@ -135,7 +135,7 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
         ["5", "Liveness model", "MobileNetV3-Small gives P(spoof) for the frame; the decision uses the average of the last 5 frames for this browser session."],
         ["6", "Three-way decision", "Inside the UNCERTAIN band -> UNCERTAIN (retry); otherwise SPOOF if >= the admin threshold, else LIVE. SPOOF and UNCERTAIN stop here, so recognition never runs on them."],
         ["7", "Recognition", "MediaPipe Face Mesh aligns the face; ArcFace (w600k_r50) gives a 512-number embedding, compared by cosine similarity with the registered students."],
-        ["8", "Natural blink", "Waits silently for one eyes-closed -> eyes-open transition (8 s window)."],
+        ["8", "Natural blink", "The server checks its own Face Mesh eye readings for open -> closed -> open eyes of the same student within 8 s. A blink signal sent by the browser is ignored."],
         ["9", "Attendance", "Present or Late (admin cut-off time), once per day. Every stage reached is logged with the frame score, the 5-frame average and the IoU."],
     ]
     story.append(table([["#", "Stage", "What happens"]] + steps, [0.7 * cm, 3.2 * cm, W - 3.9 * cm], st))
@@ -257,8 +257,6 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
         "plan to recalibrate (and only if needed fine-tune) are in place; no recalibration has been done yet.",
         "<b>Silent blink.</b> The scanner waits for a natural blink without a visible prompt. A video of the real person "
         "would also blink, so the blink is not a defense against video replay; the liveness model is the main defense.",
-        "<b>The blink result comes from the browser.</b> The scanner page detects the blink from the eye-openness values the "
-        "server sends and reports it back; the server does not re-verify it.",
         "<b>Postgres.</b> The Postgres code path exists but has never been run against a live database.",
         "<b>Dataset numbers are not webcam numbers.</b> Section 4 describes the CelebA-Spoof test set only.",
     ]:

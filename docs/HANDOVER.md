@@ -49,7 +49,7 @@ cd /Users/yuvikamalhotra/Documents/project/secureface-attendance
 ./venv/bin/python app.py                            # http://localhost:5000
 FLASK_DEBUG=1 ./venv/bin/python app.py              # + dev tools (scanner test-label dropdown,
                                                     #   /admin/dev/clear_today_attendance)
-./venv/bin/pytest -v                                # 59 tests (pytest.ini: testpaths = tests)
+./venv/bin/pytest -v                                # 67 tests (pytest.ini: testpaths = tests)
 ```
 
 **After the first start, approve a scanner.** Log in as admin on the scanner computer →
@@ -100,8 +100,12 @@ copies of the real DB. The real `database/smartface.db` gets these on its next s
 8. If a **student is logged in** in this browser, only their own face may proceed; another
    registered face → "This face doesn't match this account". (Kept from Task 1; attendance
    normally happens on the logged-out common scanner.)
-9. **Silent blink:** the browser detects eyes-closed→open from the server's `eyes_closed`
-   value and sends `liveness_verified`. 8 s window (`CHALLENGE_TIMEOUT_SECONDS`).
+9. **Silent blink, verified by the server** (`_advance_blink`, per session): the server's own
+   Face Mesh `eyes_closed` reading (EAR below the existing 0.21 cut-off) must go open → closed →
+   open for the same matched user within 8 s (`CHALLENGE_TIMEOUT_SECONDS`). A closed-eye frame
+   that fails recognition still counts for the same tracked face; only a recognized open frame
+   completes it. Any `liveness_verified` flag from the browser is ignored (tested in
+   `tests/test_server_blink.py`).
 10. **Attendance:** Present/Late by the cut-off setting, once per user per day.
 
 Messages: "Attendance marked", "Already marked today", "Face not recognized — if you're
@@ -138,7 +142,7 @@ templates/                 base.html (shared layout), login.html (single login),
                            profile.html, register.html
 static/css/style.css       shared dark theme + status colors (--state-live/spoof/uncertain/noface)
 scripts/                   create_admin, create_test_student, reset_password, measure_pipeline_latency
-tests/                     conftest.py (temp DB per test), helpers.py, 6 test files incl. test_crop_identical.py
+tests/                     conftest.py (temp DB per test), helpers.py, 7 test files incl. test_crop_identical.py
 training/                  model training/eval code + real results (not imported at runtime)
 docs/                      this file, domain_adaptation_plan.md, ngrok.md, dated evidence logs
 generate_report.py         builds SecureFace_Attendance_Report.pdf from real files
@@ -254,7 +258,7 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
 - Phase 2: UI (single login, colors, scanner box label, meters removed, Reset face, Scan
   Log columns, Spoof Log, Results, Test Mode, How It Works).
 - Phase 3: collection mode + `docs/domain_adaptation_plan.md`.
-- Phase 4: 59 tests.
+- Phase 4: 59 tests (now 67 with the server-side blink tests).
 - Phase 5: report rewrite, docs.
 
 ### Not verified (needs a person with a camera and a browser)
@@ -277,8 +281,6 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
 - **Domain shift.** On a webcam, real faces often land just inside the UNCERTAIN band (logged
   values about 0.024–0.17), and a phone photo was judged LIVE once (average 0.0238 at
   2026-11-18 11:22 UTC). Not fixed; see the plan.
-- **The blink result is client-reported.** The server trusts `liveness_verified` from the
-  browser. The liveness model still has to say LIVE first.
 - **Logged-in student on the scanner.** If a student is logged in on the scanner browser, only
   their face can mark attendance there. Log out on the kiosk.
 - **`mediapipe==0.10.30` pinned exactly.** Newer versions crash on Apple M-series with Metal.

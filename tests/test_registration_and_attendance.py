@@ -66,17 +66,27 @@ def scan_until_done(scanner, image_name, tries=8):
     return res
 
 
-def test_attendance_marked_then_already_marked(flask_app, make_user, scanner_client, db):
+def blink_scan(scanner, image_name, eye_script):
+    """Three frames of the same face with the server seeing open -> closed -> open."""
+    eye_script.extend([("open", True), ("closed", True), ("open", True)])
+    res = None
+    for _ in range(3):
+        res = scanner.post("/api/recognize_face", json={"image": sample_image(image_name)},
+                           headers={"X-CSRFToken": scanner.csrf}).get_json()
+    return res
+
+
+def test_attendance_marked_then_already_marked(flask_app, make_user, scanner_client, db, eye_script):
     a = student_client(flask_app, make_user)
     register_fully(a, FACE_A)
 
-    first = scan_until_done(scanner_client, FACE_A)
+    first = blink_scan(scanner_client, FACE_A, eye_script)
     assert first["success"] is True
     assert first["msg"] == "Attendance marked"
     assert first["emp_id"] == a.user["employee_id"]
     assert db("SELECT COUNT(*) AS n FROM attendance WHERE user_id = ?", (a.user["id"],))[0]["n"] == 1
 
-    second = scan_until_done(scanner_client, FACE_A)
+    second = blink_scan(scanner_client, FACE_A, eye_script)
     assert second["success"] is True
     assert second["msg"] == "Already marked today"
     assert db("SELECT COUNT(*) AS n FROM attendance WHERE user_id = ?", (a.user["id"],))[0]["n"] == 1

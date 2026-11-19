@@ -32,7 +32,7 @@ Webcam frame (approved scanner device only; others see "This device is not an ap
   → Three-way decision with the calibrated UNCERTAIN band (liveness/weights/gray_zone_v2.json):
        LIVE / SPOOF / UNCERTAIN; SPOOF and UNCERTAIN stop here (recognition never runs)
   → Face Mesh alignment + ArcFace (w600k_r50) embedding, cosine match vs. registered students
-  → Silent natural blink (one eyes-closed → open transition, 8 s window)
+  → Silent natural blink, verified by the server: open → closed → open eyes (Face Mesh EAR), same user, 8 s window
   → Attendance: Present / Late (admin cut-off), once per day
 ```
 
@@ -143,8 +143,8 @@ SCANNER_DEVICE_TOKEN=<scanner_device cookie value> \
 - The model was trained on dataset photos. On a webcam, real faces often land in the
   UNCERTAIN band and a phone photo was once judged LIVE. A data-collection tool is ready
   (Test Mode → Collection mode); see `docs/domain_adaptation_plan.md`. No recalibration has been done yet.
-- The silent blink is not a defense against video replay, and the blink result is
-  reported by the browser. The liveness model is the main defense.
+- The silent blink is not a defense against video replay (a video blinks too). The
+  liveness model is the main defense.
 - The Postgres path has never been run against a live database.
 
 Full detail: [`docs/HANDOVER.md`](docs/HANDOVER.md).

@@ -300,9 +300,42 @@ def _reset_liveness_session():
     session.pop('last_bbox', None)
     session.pop('last_logged_decision', None)
     session.pop('last_logged_stage', None)
+    _clear_blink_attempt()
+
+
+def _clear_blink_attempt():
+    """Ends any in-progress blink attempt for this browser session."""
     session.pop('challenge_type', None)
     session.pop('challenge_user', None)
     session.pop('challenge_assigned_at', None)
+    session.pop('blink_stage', None)
+
+
+def _advance_blink(liveness_metrics, allow_complete=True):
+    """Server-side blink check, per session, from the eye-aspect-ratio the
+    server itself computed with Face Mesh on this LIVE frame
+    (liveness_metrics["eyes_closed"] = EAR below utils/face_utils.py's
+    existing cut-off). Requires open -> closed -> open:
+
+        start --open--> open --closed--> closed --open--> done
+
+    Frames where Face Mesh found no face don't count as "open". With
+    allow_complete=False (an unrecognized LIVE frame of the same tracked
+    face -- closed eyes can make recognition fail for a frame) the attempt
+    may move open -> closed but can't finish; finishing needs a recognized
+    open-eye frame of the same user. Returns True once done."""
+    if not liveness_metrics or not liveness_metrics.get("face_mesh_detected"):
+        return session.get('blink_stage') == 'done'
+    closed = bool(liveness_metrics.get("eyes_closed"))
+    stage = session.get('blink_stage', 'start')
+    if stage == 'start' and not closed and allow_complete:
+        stage = 'open'
+    elif stage == 'open' and closed:
+        stage = 'closed'
+    elif stage == 'closed' and not closed and allow_complete:
+        stage = 'done'
+    session['blink_stage'] = stage
+    return stage == 'done'
 
 
 def _face_box_iou(a, b):
@@ -1760,7 +1793,8 @@ def api_recognize_face():
     try:
         data = request.json
         base64_img = data.get("image")
-        liveness_verified = data.get("liveness_verified", False)
+        # Any blink flag the browser sends ("liveness_verified") is ignored:
+        # the blink is verified server-side from Face Mesh (_advance_blink).
 
         # Dev-only test-category label (e.g. "printed_photo") from the
         # scanner page's debug-only dropdown -- only honored with
@@ -1875,9 +1909,7 @@ def api_recognize_face():
                 # the subject is not currently verified live, so nothing
                 # they do should complete a challenge issued while they
                 # briefly were (e.g. swapped to a photo mid-challenge).
-                session.pop('challenge_type', None)
-                session.pop('challenge_user', None)
-                session.pop('challenge_assigned_at', None)
+                _clear_blink_attempt()
                 _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": False, "recognized": False,
@@ -1939,9 +1971,7 @@ def api_recognize_face():
             # Logged-in student: only their own face may mark attendance.
             # The public scanner (no student session) still recognizes anyone.
             if session.get("role") == "employee" and user_id != session.get("user_id"):
-                session.pop('challenge_type', None)
-                session.pop('challenge_user', None)
-                session.pop('challenge_assigned_at', None)
+                _clear_blink_attempt()
                 _log_scan_event("UNRECOGNIZED", user_id=session.get("user_id"),
                                  detail=f"account_mismatch matched_user_id={user_id}", test_label=test_label, **frame_scores)
                 return jsonify({
@@ -1959,14 +1989,19 @@ def api_recognize_face():
             # long we wait for one natural blink before silently restarting
             # the attempt clock, so a subject who isn't blinking (dry eyes,
             # staring) doesn't get stuck forever.
-            if 'challenge_type' not in session or session.get('challenge_user') != user_info['name']:
+            # The open -> closed -> open sequence must happen for this same
+            # user within CHALLENGE_TIMEOUT_SECONDS of the attempt starting;
+            # a different matched user or a timeout starts a fresh attempt.
+            if 'challenge_type' not in session or session.get('challenge_user') != user_id:
+                _clear_blink_attempt()
                 session['challenge_type'] = 'blink'
-                session['challenge_user'] = user_info['name']
+                session['challenge_user'] = user_id
                 session['challenge_assigned_at'] = time.time()
             elif time.time() - session.get('challenge_assigned_at', 0) > CHALLENGE_TIMEOUT_SECONDS:
                 session['challenge_assigned_at'] = time.time()
+                session.pop('blink_stage', None)
 
-            challenge_passed = bool(liveness_verified)
+            challenge_passed = _advance_blink(liveness_metrics)
 
             if not challenge_passed:
                 _log_scan_event("RECOGNIZED", user_id=user_id, detail="awaiting silent blink", test_label=test_label, **frame_scores)
@@ -1982,10 +2017,8 @@ def api_recognize_face():
                     "department": user_info['department'],
                 })
 
-            # Challenge passed! Clear session
-            session.pop('challenge_type', None)
-            session.pop('challenge_user', None)
-            session.pop('challenge_assigned_at', None)
+            # Blink verified by the server. Clear the attempt.
+            _clear_blink_attempt()
 
             now = datetime.now()
             date_str = now.strftime("%Y-%m-%d")
@@ -2032,6 +2065,15 @@ def api_recognize_face():
 
         # LIVE, face found, but not recognized (either unregistered, or
         # fewer than min_face_samples enrolled -- see register_face()).
+        # If a blink attempt is in progress for this same tracked face (any
+        # face jump / no-face / multi-face would have reset the session) and
+        # still inside its window, a closed-eye frame may still count: closed
+        # eyes can make recognition fail for that one frame.
+        if session.get('challenge_type') == 'blink':
+            if time.time() - session.get('challenge_assigned_at', 0) <= CHALLENGE_TIMEOUT_SECONDS:
+                _advance_blink(liveness_metrics, allow_complete=False)
+            else:
+                _clear_blink_attempt()
         _log_scan_event("UNRECOGNIZED", test_label=test_label, **frame_scores)
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",

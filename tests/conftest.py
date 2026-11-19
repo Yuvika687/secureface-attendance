@@ -108,3 +108,29 @@ def scanner_client(flask_app, admin_client):
     c.set_cookie("scanner_device", token)
     c.csrf = csrf_token(c, "/")
     return c
+
+
+@pytest.fixture
+def eye_script(monkeypatch):
+    """Scripts the eye state the server sees, for blink tests.
+
+    Static sample photos can't blink, so this wraps the REAL
+    recognize_face_with_liveness() (Face Mesh + ArcFace still run on the real
+    image) and only replaces liveness_metrics["eyes_closed"] -- the value the
+    server derives from Face Mesh's eye-aspect-ratio -- with the next scripted
+    step. Append ("open"|"closed", recognized: bool) tuples to the returned
+    list; recognized=False makes that frame an unrecognized LIVE frame."""
+    real = app_module.recognize_face_with_liveness
+    script = []
+
+    def scripted(frame, match_threshold=0.40):
+        user_id, metrics, confidence, multi_face = real(frame, match_threshold=match_threshold)
+        if script:
+            eyes, recognized = script.pop(0)
+            metrics = dict(metrics, eyes_closed=(eyes == "closed"), face_mesh_detected=True)
+            if not recognized:
+                user_id = None
+        return user_id, metrics, confidence, multi_face
+
+    monkeypatch.setattr(app_module, "recognize_face_with_liveness", scripted)
+    return script

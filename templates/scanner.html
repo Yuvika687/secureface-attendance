@@ -375,8 +375,6 @@
         const frameCounter = document.getElementById("frameCounter");
 
         let isProc = false;
-        let eyeWasClosed = false;
-        let blinkDetected = false;
         let frameCount = 0;
         let consecutiveRecognitions = 0;  // Track consecutive successful recognitions
         let lastRecognizedUser = null;
@@ -499,7 +497,7 @@
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout (local)
 
-                    const payload = {image:b64, liveness_verified: blinkDetected};
+                    const payload = {image:b64};  // the blink is verified by the server
                     if (window.getDevTestLabel) {
                         const lbl = window.getDevTestLabel();
                         if (lbl) payload.test_label = lbl;
@@ -543,7 +541,6 @@
                     } else if(res.spoofing_detected) {
                         setCamStatus("Spoof detected", esc(res.msg || "Spoof detected — please use your real face."), "alert", "SPOOF");
                         updateFaceBox(res.face_box || null);
-                        eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
                     } else if(res.state === "UNCERTAIN") {
@@ -554,7 +551,6 @@
                         // in the desc was the literal on-screen duplicate.
                         setCamStatus("Hold still — checking again.", "", "uncertain", "UNCERTAIN");
                         updateFaceBox(res.face_box || null);
-                        eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
                     } else if(res.recognized) {
@@ -563,21 +559,6 @@
                         } else {
                             consecutiveRecognitions = 1;
                             lastRecognizedUser = res.user;
-                        }
-
-                        let metrics = res.liveness_metrics || {};
-
-                        // Silent natural-blink check -- no challenge type to
-                        // branch on anymore, just watch for one closed->open
-                        // eye transition (EAR from the server's real Face
-                        // Mesh reading, edge-detected client-side).
-                        if (!blinkDetected) {
-                            if (metrics.eyes_closed && !eyeWasClosed) {
-                                eyeWasClosed = true;
-                            } else if (!metrics.eyes_closed && eyeWasClosed) {
-                                blinkDetected = true;
-                                eyeWasClosed = false;
-                            }
                         }
 
                         if (res.success) {
@@ -593,18 +574,17 @@
                             updateFaceBox(res.face_box || null);
 
                             setTimeout(() => {
-                                eyeWasClosed = false; blinkDetected = false; isProc = false;
+                                isProc = false;
                                 consecutiveRecognitions = 0; lastRecognizedUser = null;
                                 setCamStatus("Step into the frame.", "", "normal");
                                 updateFaceBox(null);
                                 setTimeout(engine, 500);
                             }, 3500);
                             return;
-                        } else if (!blinkDetected) {
-                            // No visible instruction -- waiting silently for
-                            // one natural blink (see chat for the honest
-                            // replay-attack tradeoff vs. the old random
-                            // blink/turn_left/turn_right challenge).
+                        } else {
+                            // No visible instruction -- the server waits
+                            // silently for one natural blink (open -> closed
+                            // -> open, from its own Face Mesh reading).
                             setCamStatus("Live face — verifying…", "", "blink", "LIVE");
                             updateFaceBox(res.face_box || null);
                         }
@@ -618,7 +598,6 @@
                             "live", "LIVE"
                         );
                         updateFaceBox(res.face_box || null);
-                        eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0; lastRecognizedUser = null;
                         setTimeout(() => {
                             isProc = false;
@@ -630,7 +609,6 @@
                     } else {
                         setCamStatus("Step into the frame.", "", "noface", "NO FACE");
                         updateFaceBox(res.face_box || null);
-                        eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0; lastRecognizedUser = null;
                     }
                 } catch(e) {
