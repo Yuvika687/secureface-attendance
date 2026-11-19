@@ -154,6 +154,54 @@
     </div>
 </form>
 
+<!-- Scanner devices (separate forms: approve / remove) -->
+<div class="settings-section" style="margin-top:1.25rem;">
+    <h3><i class="fa-solid fa-camera" style="color:var(--accent-emerald);"></i> Scanner Devices</h3>
+    <p style="font-size:0.78rem; color:var(--text-muted); margin:0.35rem 0 0.85rem;">
+        Only approved devices can mark attendance. Other devices opening the scanner page see
+        "This device is not an approved scanner."
+    </p>
+
+    {% if this_device_id %}
+    <div style="font-size:0.82rem; color:var(--accent-emerald); font-weight:600; margin-bottom:0.85rem;">
+        <i class="fa-solid fa-circle-check"></i> This device is an approved scanner.
+    </div>
+    {% else %}
+    <form method="POST" action="{{ url_for('admin_approve_scanner_device') }}" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:0.85rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="label" maxlength="60" placeholder="Device name (e.g. Main entrance)" class="setting-input" style="width:240px; text-align:left;">
+        <button type="submit" class="btn-primary" style="padding:0.55rem 1rem;">
+            <i class="fa-solid fa-check"></i> Set this device as scanner
+        </button>
+    </form>
+    {% endif %}
+
+    {% if scanner_devices %}
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+        {% for d in scanner_devices %}
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:10px;">
+            <div style="min-width:0;">
+                <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">
+                    {{ d['label'] }}{% if d['id'] == this_device_id %} <span style="color:var(--accent-emerald); font-weight:600;">(this device)</span>{% endif %}
+                </div>
+                <div style="font-size:0.7rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:420px;">
+                    Approved {{ d['created_at'] }}{% if d['approved_by_email'] %} by {{ d['approved_by_email'] }}{% endif %} · {{ d['user_agent'] }}
+                </div>
+            </div>
+            <form method="POST" action="{{ url_for('admin_revoke_scanner_device', device_id=d['id']) }}" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-sm" style="color:var(--accent-rose);">
+                    <i class="fa-solid fa-xmark"></i> Remove approval
+                </button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:0.78rem; color:var(--text-muted);">No approved scanner devices yet.</div>
+    {% endif %}
+</div>
+
 <style>
 .toggle-slider.active {
     background: rgba(16,185,129,0.2) !important;

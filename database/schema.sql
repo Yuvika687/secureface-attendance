@@ -57,10 +57,27 @@ CREATE TABLE IF NOT EXISTS scan_events (
     user_id INTEGER,
     detail TEXT,
     test_label TEXT,
+    p_spoof_frame REAL,
+    p_spoof_avg REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Existing Postgres databases: add the per-frame score columns.
+ALTER TABLE scan_events ADD COLUMN IF NOT EXISTS p_spoof_frame REAL;
+ALTER TABLE scan_events ADD COLUMN IF NOT EXISTS p_spoof_avg REAL;
 
--- Audit trail for destructive admin actions (currently /admin/wipe_model):
+-- Browsers an admin approved as the attendance scanner. The device holds a
+-- random token in a cookie; only its SHA-256 hash is stored here.
+CREATE TABLE IF NOT EXISTS scanner_devices (
+    id SERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    label TEXT,
+    approved_by INTEGER,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP
+);
+
+-- Audit trail for admin actions (wipe_model, scanner approve/revoke):
 -- who did it and when.
 CREATE TABLE IF NOT EXISTS admin_audit_log (
     id SERIAL PRIMARY KEY,

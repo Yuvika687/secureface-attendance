@@ -545,6 +545,13 @@
                         updateMeters(res.confidence || 0, livenessScore);
                     }
 
+                    // Device approval removed while this page was open: stop scanning.
+                    if (res.device_not_approved) {
+                        setCamStatus(res.msg, "", "alert");
+                        updateFaceBox(null);
+                        return;
+                    }
+
                     // Handle API error
                     if (res.error) {
                         setCamStatus(

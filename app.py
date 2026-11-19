@@ -5,6 +5,7 @@ import uuid
 import sqlite3
 import time
 import hashlib
+import secrets
 import math
 from collections import deque
 from datetime import datetime, timedelta
@@ -120,6 +121,30 @@ if not Config.USE_POSTGRES:
                 conn.commit()
             except Exception:
                 pass
+        for col in ('p_spoof_frame', 'p_spoof_avg'):
+            try:
+                conn.execute(f"SELECT {col} FROM scan_events LIMIT 1")
+            except Exception:
+                try:
+                    conn.execute(f"ALTER TABLE scan_events ADD COLUMN {col} REAL")
+                    conn.commit()
+                except Exception:
+                    pass
+        try:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS scanner_devices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    label TEXT,
+                    approved_by INTEGER,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    revoked_at TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        except Exception:
+            pass
         for key, value in _DEFAULT_SETTINGS.items():
             try:
                 conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -192,7 +217,7 @@ def is_late(time_str):
 # which leaked state between concurrent users/sessions.
 
 RECENT_PROBS_WINDOW = 5          # frames averaged for the smoothed P(spoof)
-FACE_MOVE_REJECT_RATIO = 0.6     # center displacement > 60% of face size => treat as a different physical subject
+SAME_FACE_MIN_IOU = 0.25         # face-box IoU vs. the previous frame below this => treat as a different physical subject
 # Word the admin must type to confirm /admin/wipe_model (sent as JSON "confirm").
 WIPE_CONFIRM_WORD = "WIPE"
 
@@ -201,6 +226,12 @@ MSG_ATTENDANCE_MARKED = "Attendance marked"
 MSG_ALREADY_MARKED = "Already marked today"
 MSG_FACE_NOT_RECOGNIZED = "Face not recognized — if you're wearing a mask, please remove it and try again."
 MSG_ACCOUNT_MISMATCH = "This face doesn't match this account"
+MSG_DEVICE_NOT_APPROVED = "This device is not an approved scanner."
+
+# Scanner-device approval: an admin approves a browser; it keeps a random
+# token in this cookie (only the token's SHA-256 is stored server-side).
+SCANNER_COOKIE_NAME = "scanner_device"
+SCANNER_COOKIE_MAX_AGE = 5 * 365 * 24 * 3600   # stays approved until an admin revokes it
 
 CHALLENGE_TIMEOUT_SECONDS = 8    # max wait for one natural blink before silently restarting the attempt
 
@@ -236,20 +267,25 @@ def _reset_liveness_session():
     session.pop('challenge_assigned_at', None)
 
 
-def _face_moved_too_much(prev_bbox, cur_bbox):
-    """True if the face's center moved more than FACE_MOVE_REJECT_RATIO of
-    its own size since the last frame -- a same-face consistency check: the
-    face that passes liveness must stay the same physical subject through
-    recognition and the challenge, not be swapped mid-sequence."""
+def _face_box_iou(a, b):
+    """Intersection-over-union of two [x, y, width, height] boxes."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    iw = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
+    ih = max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    inter = iw * ih
+    union = aw * ah + bw * bh - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _is_different_face(prev_bbox, cur_bbox):
+    """Same-face consistency check: True if the face box's IoU with the
+    previous frame's box is below SAME_FACE_MIN_IOU, i.e. the face that
+    passed liveness is no longer the same physical subject (swapped, or a
+    phone/photo pushed in). Catches position jumps AND sudden size changes."""
     if prev_bbox is None:
         return False
-    px, py, pw, ph = prev_bbox
-    cx, cy, cw, ch = cur_bbox
-    pcx, pcy = px + pw / 2.0, py + ph / 2.0
-    ccx, ccy = cx + cw / 2.0, cy + ch / 2.0
-    dist = math.hypot(ccx - pcx, ccy - pcy)
-    ref_size = max(cw, ch, 1)
-    return (dist / ref_size) > FACE_MOVE_REJECT_RATIO
+    return _face_box_iou(prev_bbox, cur_bbox) < SAME_FACE_MIN_IOU
 
 
 def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
@@ -270,7 +306,8 @@ def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
     conn.close()
 
 
-def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True, test_label=None):
+def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True, test_label=None,
+                    p_spoof_frame=None, p_spoof_avg=None):
     """Writes one scan_events row for the pipeline STAGE reached this request
     -- for reviewing a test session afterward (what happened, in order).
 
@@ -286,6 +323,11 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
 
     FACE_MOVED passes update_dedup_key=False so it doesn't disturb the dedup
     baseline for the deeper stage logged right after it in the same request.
+
+    p_spoof_frame / p_spoof_avg: this frame's raw liveness score and the
+    5-frame smoothed score the decision used. Set on every row logged after
+    the liveness model ran; NULL for stages before it (NO_FACE, BlazeFace
+    MULTI_FACE, FACE_MOVED) -- no score exists yet for those.
     """
     sid = _get_liveness_session_id()
     if dedup and session.get('last_logged_stage') == stage:
@@ -294,8 +336,11 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
         session['last_logged_stage'] = stage
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO scan_events (session_id, stage, user_id, detail, test_label) VALUES (?, ?, ?, ?, ?)",
-        (sid, stage, user_id, detail, test_label),
+        "INSERT INTO scan_events (session_id, stage, user_id, detail, test_label, p_spoof_frame, p_spoof_avg) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (sid, stage, user_id, detail, test_label,
+         None if p_spoof_frame is None else float(p_spoof_frame),
+         None if p_spoof_avg is None else float(p_spoof_avg)),
     )
     conn.commit()
     conn.close()
@@ -305,8 +350,29 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
 #  PUBLIC ROUTES
 # ============================================================
 
+def _hash_scanner_token(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _current_scanner_device():
+    """The approved, non-revoked scanner_devices row for this browser's
+    scanner cookie, or None."""
+    token = request.cookies.get(SCANNER_COOKIE_NAME)
+    if not token:
+        return None
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT id, label FROM scanner_devices WHERE token_hash = ? AND revoked_at IS NULL",
+        (_hash_scanner_token(token),),
+    ).fetchone()
+    conn.close()
+    return row
+
+
 @app.route("/")
 def home():
+    if not _current_scanner_device():
+        return render_template("scanner_not_approved.html", msg=MSG_DEVICE_NOT_APPROVED), 403
     return render_template("scanner.html", debug_mode=DEBUG_MODE)
 
 
@@ -895,7 +961,75 @@ def settings():
         'hr_email': get_setting('hr_email', ''),
     }
 
-    return render_template("settings.html", settings=current_settings)
+    conn = get_db_connection()
+    scanner_devices = conn.execute(
+        "SELECT d.id, d.label, d.user_agent, d.created_at, u.email AS approved_by_email "
+        "FROM scanner_devices d LEFT JOIN users u ON u.id = d.approved_by "
+        "WHERE d.revoked_at IS NULL ORDER BY d.created_at DESC"
+    ).fetchall()
+    conn.close()
+    this_device = _current_scanner_device()
+
+    return render_template("settings.html", settings=current_settings,
+                           scanner_devices=scanner_devices,
+                           this_device_id=this_device["id"] if this_device else None)
+
+
+def _log_admin_action(action, detail):
+    conn = get_db_connection()
+    admin = conn.execute("SELECT email FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    conn.execute(
+        "INSERT INTO admin_audit_log (admin_user_id, admin_email, action, detail, ip_address) VALUES (?, ?, ?, ?, ?)",
+        (session["user_id"], admin["email"] if admin else None, action, detail, request.remote_addr),
+    )
+    conn.commit()
+    conn.close()
+
+
+@app.route("/admin/scanner_devices/approve", methods=["POST"])
+def admin_approve_scanner_device():
+    """Approves THIS browser as an attendance scanner (sets its cookie)."""
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    if _current_scanner_device():
+        flash("This device is already an approved scanner.", "success")
+        return redirect(url_for("settings"))
+
+    label = (request.form.get("label") or "").strip()[:60] or "Scanner"
+    token = secrets.token_urlsafe(32)
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO scanner_devices (token_hash, label, approved_by, user_agent) VALUES (?, ?, ?, ?)",
+        (_hash_scanner_token(token), label, session["user_id"], (request.headers.get("User-Agent") or "")[:200]),
+    )
+    conn.commit()
+    conn.close()
+    _log_admin_action("SCANNER_APPROVED", f"label={label}")
+
+    flash(f'This device is now an approved scanner ("{label}").', "success")
+    resp = redirect(url_for("settings"))
+    resp.set_cookie(SCANNER_COOKIE_NAME, token, max_age=SCANNER_COOKIE_MAX_AGE,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/admin/scanner_devices/<int:device_id>/revoke", methods=["POST"])
+def admin_revoke_scanner_device(device_id):
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    conn = get_db_connection()
+    row = conn.execute("SELECT label FROM scanner_devices WHERE id = ? AND revoked_at IS NULL",
+                       (device_id,)).fetchone()
+    if row:
+        conn.execute("UPDATE scanner_devices SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?", (device_id,))
+        conn.commit()
+    conn.close()
+    if row:
+        _log_admin_action("SCANNER_REVOKED", f"device_id={device_id} label={row['label']}")
+        flash(f'Scanner approval removed ("{row["label"]}").', "success")
+    else:
+        flash("That scanner device was not found or is already removed.", "danger")
+    return redirect(url_for("settings"))
 
 
 @app.route("/export_csv")
@@ -1141,6 +1275,14 @@ def api_recognize_face():
             if isinstance(raw_label, str) and raw_label.strip():
                 test_label = raw_label.strip()[:40]
 
+        # Only admin-approved scanner devices may run the pipeline / mark attendance.
+        if not _current_scanner_device():
+            return jsonify({
+                "success": False, "recognized": False,
+                "state": "DEVICE_NOT_APPROVED", "device_not_approved": True,
+                "msg": MSG_DEVICE_NOT_APPROVED,
+            }), 403
+
         if not base64_img:
             return jsonify({"success": False, "recognized": False, "msg": "No image data received."})
 
@@ -1195,9 +1337,10 @@ def api_recognize_face():
         # recognition challenge) rather than silently continuing as if
         # nothing happened.
         prev_bbox = session.get('last_bbox')
-        if _face_moved_too_much(prev_bbox, cur_bbox):
+        if _is_different_face(prev_bbox, cur_bbox):
             _log_scan_event("FACE_MOVED", dedup=False, update_dedup_key=False,
-                             detail=f"prev={prev_bbox} cur={cur_bbox}", test_label=test_label)
+                             detail=f"prev={prev_bbox} cur={cur_bbox} iou={_face_box_iou(prev_bbox, cur_bbox):.3f}",
+                             test_label=test_label)
             _reset_liveness_session()
         session['last_bbox'] = cur_bbox
 
@@ -1222,6 +1365,7 @@ def api_recognize_face():
         smoothed_prob_spoof = _smoothed_prob_spoof(raw_prob_spoof)
         liveness_threshold = float(get_setting('liveness_threshold', '0.5'))
         decision = classify_three_way(smoothed_prob_spoof, *_gray_zone_band, threshold=liveness_threshold)
+        frame_scores = {"p_spoof_frame": raw_prob_spoof, "p_spoof_avg": smoothed_prob_spoof}
 
         if decision != "LIVE":
             _log_liveness_event_if_changed(decision, smoothed_prob_spoof)
@@ -1234,7 +1378,7 @@ def api_recognize_face():
                 session.pop('challenge_type', None)
                 session.pop('challenge_user', None)
                 session.pop('challenge_assigned_at', None)
-                _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label)
+                _log_scan_event("SPOOF", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": False, "recognized": False,
                     "state": "SPOOF", "spoofing_detected": True,
@@ -1257,7 +1401,7 @@ def api_recognize_face():
             # advances the challenge state machine below, so preserving the
             # challenge slot only ever helps a genuinely live, still-present
             # subject resume where they left off.
-            _log_scan_event("UNCERTAIN", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label)
+            _log_scan_event("UNCERTAIN", detail=f"p_spoof={round(smoothed_prob_spoof, 4)}", test_label=test_label, **frame_scores)
             return jsonify({
                 "success": False, "recognized": False,
                 "state": "UNCERTAIN",
@@ -1275,7 +1419,7 @@ def api_recognize_face():
         timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
 
         if multi_face:
-            _log_scan_event("MULTI_FACE", test_label=test_label)
+            _log_scan_event("MULTI_FACE", test_label=test_label, **frame_scores)
             _reset_liveness_session()
             return jsonify({
                 "success": False, "recognized": False,
@@ -1299,7 +1443,7 @@ def api_recognize_face():
                 session.pop('challenge_user', None)
                 session.pop('challenge_assigned_at', None)
                 _log_scan_event("UNRECOGNIZED", user_id=session.get("user_id"),
-                                 detail=f"account_mismatch matched_user_id={user_id}", test_label=test_label)
+                                 detail=f"account_mismatch matched_user_id={user_id}", test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": False, "recognized": False, "state": "LIVE",
                     "face_found": True, "account_mismatch": True,
@@ -1325,7 +1469,7 @@ def api_recognize_face():
             challenge_passed = bool(liveness_verified)
 
             if not challenge_passed:
-                _log_scan_event("RECOGNIZED", user_id=user_id, detail="awaiting silent blink", test_label=test_label)
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail="awaiting silent blink", test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
@@ -1357,9 +1501,9 @@ def api_recognize_face():
                 conn.commit()
                 conn.close()
                 _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
-                                 dedup=False, update_dedup_key=False, test_label=test_label)
+                                 dedup=False, update_dedup_key=False, test_label=test_label, **frame_scores)
                 _log_scan_event("ATTENDANCE_MARKED", user_id=user_id, detail=f"status={status} time={time_str}",
-                                 dedup=False, test_label=test_label)
+                                 dedup=False, test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
                     "msg": MSG_ATTENDANCE_MARKED,
@@ -1373,9 +1517,9 @@ def api_recognize_face():
             else:
                 conn.close()
                 _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
-                                 dedup=False, update_dedup_key=False, test_label=test_label)
+                                 dedup=False, update_dedup_key=False, test_label=test_label, **frame_scores)
                 _log_scan_event("ALREADY_MARKED", user_id=user_id, detail="already checked in today",
-                                 dedup=False, test_label=test_label)
+                                 dedup=False, test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
                     "msg": MSG_ALREADY_MARKED,
@@ -1388,7 +1532,7 @@ def api_recognize_face():
 
         # LIVE, face found, but not recognized (either unregistered, or
         # fewer than min_face_samples enrolled -- see register_face()).
-        _log_scan_event("UNRECOGNIZED", test_label=test_label)
+        _log_scan_event("UNRECOGNIZED", test_label=test_label, **frame_scores)
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,

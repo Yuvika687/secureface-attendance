@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner - SecureFace Attendance</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background: #000; color: #fff; font-family: 'Inter', sans-serif; padding: 16px;
+        }
+        .card {
+            max-width: 420px; width: 100%; text-align: center; padding: 2rem 1.5rem;
+            background: rgba(10, 14, 26, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;
+        }
+        .card i { font-size: 2.2rem; color: #f59e0b; margin-bottom: 1rem; }
+        .card h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.6rem; }
+        .card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.5; }
+        .card a { color: #10b981; font-weight: 600; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <i class="fa-solid fa-ban"></i>
+        <h1>{{ msg }}</h1>
+        <p>Attendance can only be marked on a scanner device approved by an admin.<br>
+           Students: <a href="{{ url_for('login') }}">log in</a> to view your attendance.<br>
+           Admins: approve this device in <a href="{{ url_for('settings') }}">Settings</a>.</p>
+    </div>
+</body>
+</html>

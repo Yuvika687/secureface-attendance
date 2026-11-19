@@ -21,6 +21,15 @@ import os
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:5000"
 
+# The scanner only runs on admin-approved devices. Pass the approved device's
+# cookie value via SCANNER_DEVICE_TOKEN (the "scanner_device" cookie).
+SCANNER_DEVICE_COOKIE = (f"scanner_device={os.environ['SCANNER_DEVICE_TOKEN']}"
+                         if os.environ.get("SCANNER_DEVICE_TOKEN") else None)
+
+
+def _with_device_cookie(cookie):
+    return "; ".join(c for c in (cookie, SCANNER_DEVICE_COOKIE) if c)
+
 # Real CelebA-Spoof images from anti_spoof_attendance, reused as realistic
 # face inputs (this script only measures pipeline speed, not accuracy --
 # accuracy numbers come from results/summary.json / live camera testing).
@@ -42,7 +51,7 @@ def b64_data_uri(path):
 def get_session_and_csrf():
     """Fetches a session cookie + the real CSRF token embedded in the page,
     same as the browser's csrf.js wrapper does from the <meta> tag."""
-    req = urllib.request.Request(BASE_URL + "/")
+    req = urllib.request.Request(BASE_URL + "/", headers=({"Cookie": SCANNER_DEVICE_COOKIE} if SCANNER_DEVICE_COOKIE else {}))
     with urllib.request.urlopen(req) as resp:
         html = resp.read().decode("utf-8")
         cookie = resp.headers.get("Set-Cookie", "").split(";")[0]
@@ -57,7 +66,7 @@ def post_recognize(data_uri, cookie, csrf_token):
         headers={
             "Content-Type": "application/json",
             "X-CSRFToken": csrf_token,
-            **({"Cookie": cookie} if cookie else {}),
+            **({"Cookie": _with_device_cookie(cookie)} if _with_device_cookie(cookie) else {}),
         },
         method="POST",
     )
