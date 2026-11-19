@@ -4,6 +4,20 @@
 {% block page_subtitle %}Your personal attendance dashboard{% endblock %}
 
 {% block content %}
+{% if not user['face_registered'] %}
+<!-- Face not registered yet -->
+<div class="glass-card" style="margin-bottom:1.25rem; border:1px solid var(--accent-gold);">
+    <div class="glass-card-body" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:0.85rem;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem; color:var(--accent-gold);"></i>
+            <div style="font-size:1rem; font-weight:700; color:var(--text-primary);">Register your face to start marking attendance</div>
+        </div>
+        <button type="button" onclick="document.getElementById('faceModal').style.display='flex'" style="padding:0.6rem 1.2rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; font-family:inherit;">
+            <i class="fa-solid fa-camera"></i> Register Face
+        </button>
+    </div>
+</div>
+{% endif %}
 <!-- Today's Status -->
 {% if today_status %}
 <div class="today-status-card {% if today_status.status == 'Late' %}late-check{% else %}checked-in{% endif %}">
@@ -21,7 +35,7 @@
         <i class="fa-solid fa-triangle-exclamation" style="font-size:1.8rem; color:var(--accent-gold);"></i>
         <div style="text-align:left;">
             <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Not Checked In Yet</div>
-            <div style="font-size:0.78rem; color:var(--text-secondary);">Head to the <a href="{{ url_for('scanner') }}" style="color:var(--accent-emerald); font-weight:600; text-decoration:none;">Face Scanner</a> to mark attendance</div>
+            <div style="font-size:0.78rem; color:var(--text-secondary);">Attendance is marked at the common face scanner</div>
         </div>
     </div>
 </div>

@@ -607,7 +607,7 @@
                             // the heading matches what actually happened instead
                             // of always claiming "Access Granted".
                             let heading = res.status !== undefined ? "Access Granted" : "Welcome Back";
-                            setCamStatus(avatar + `<div>${heading}</div>`, `<span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.user} — ${res.msg}${res.status ? ` (${res.status})` : ''}</span>`, "success");
+                            setCamStatus(avatar + `<div>${heading}</div>`, `<div style='color:#e2e8f0; font-weight:700; font-size:1.1rem;'>${res.user}</div><div style='color:#94a3b8; font-family:monospace; font-size:0.9rem; margin-bottom:4px;'>Student ID: ${res.emp_id}</div><span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}${res.status ? ` (${res.status})` : ''}</span>`, "success");
                             updateFaceBox(res.face_box || null);
 
                             setTimeout(() => {
