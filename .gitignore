@@ -21,3 +21,7 @@ install_log.txt
 # trained artifacts (those live in liveness/weights/ and ARE committed).
 models/
 liveness/weights/blaze_face_short_range.tflite
+
+# Domain-adaptation collection (Phase 3): real face crops of real people --
+# never committed.
+data/domain_adaptation/

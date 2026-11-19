@@ -217,6 +217,11 @@ def _init_sqlite():
         p_spoof_frame REAL,
         p_spoof_avg REAL,
         admin_user_id INTEGER,
+        person_id TEXT,
+        glasses TEXT,
+        lighting TEXT,
+        collection_session INTEGER,
+        crop_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 

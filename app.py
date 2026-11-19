@@ -128,6 +128,16 @@ if not Config.USE_POSTGRES:
                 conn.commit()
             except Exception:
                 pass
+        for col, coltype in (('person_id', 'TEXT'), ('glasses', 'TEXT'), ('lighting', 'TEXT'),
+                             ('collection_session', 'INTEGER'), ('crop_path', 'TEXT')):
+            try:
+                conn.execute(f"SELECT {col} FROM test_mode_results LIMIT 1")
+            except Exception:
+                try:
+                    conn.execute(f"ALTER TABLE test_mode_results ADD COLUMN {col} {coltype}")
+                    conn.commit()
+                except Exception:
+                    pass
         for col in ('p_spoof_frame', 'p_spoof_avg', 'iou'):
             try:
                 conn.execute(f"SELECT {col} FROM scan_events LIMIT 1")
@@ -147,6 +157,11 @@ if not Config.USE_POSTGRES:
                 p_spoof_frame REAL,
                 p_spoof_avg REAL,
                 admin_user_id INTEGER,
+                person_id TEXT,
+                glasses TEXT,
+                lighting TEXT,
+                collection_session INTEGER,
+                crop_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -972,6 +987,47 @@ def _test_mode_metrics(test_session):
     return {"rows": rows, "overall": overall, "total": overall["n_bona"] + overall["n_attack"]}
 
 
+# Domain-adaptation collection mode (Phase 3). Saves the raw 25%-margin face
+# crop (what crop_face() returns, before resizing) as PNG, outside git.
+COLLECTION_DIR = os.path.join(Config.BASE_DIR, "data", "domain_adaptation")
+COLLECTION_MIN_INTERVAL_S = 1.0     # at most one saved crop per second (consecutive frames are near-duplicates)
+COLLECTION_GLASSES = ("glasses", "no_glasses")
+COLLECTION_LIGHTING = ("normal", "dim")
+COLLECTION_SESSIONS = (1, 2)        # 1 = adaptation data, 2 = held-out test data only
+
+
+def _parse_collection(data):
+    """Validated collection settings from a Test Mode request, or (None, error)."""
+    c = data.get("collect")
+    if not c:
+        return None, None
+    person = str(c.get("person_id") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", person):
+        return None, "Person ID: 1-20 letters, digits, _ or - (use a code like P01, not a name)."
+    if c.get("glasses") not in COLLECTION_GLASSES:
+        return None, "Choose glasses / no glasses."
+    if c.get("lighting") not in COLLECTION_LIGHTING:
+        return None, "Choose normal / dim light."
+    try:
+        sess_no = int(c.get("session"))
+    except (TypeError, ValueError):
+        sess_no = None
+    if sess_no not in COLLECTION_SESSIONS:
+        return None, "Choose collection session 1 or 2."
+    return {"person_id": person, "glasses": c["glasses"], "lighting": c["lighting"], "session": sess_no}, None
+
+
+def _collection_counts(person_id, sess_no):
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT category, glasses, lighting, COUNT(*) AS n FROM test_mode_results "
+        "WHERE crop_path IS NOT NULL AND person_id = ? AND collection_session = ? "
+        "GROUP BY category, glasses, lighting", (person_id, sess_no)
+    ).fetchall()
+    conn.close()
+    return [{"category": r["category"], "glasses": r["glasses"], "lighting": r["lighting"], "n": r["n"]} for r in rows]
+
+
 def _new_test_session():
     session["test_session"] = uuid.uuid4().hex[:12]
     session.pop("test_recent_probs", None)
@@ -1027,6 +1083,9 @@ def api_admin_test_scan():
     frame = data_uri_to_cv2_img(data.get("image")) if data.get("image") else None
     if frame is None:
         return jsonify({"success": False, "msg": "Could not decode image."}), 400
+    collect, collect_err = _parse_collection(data)
+    if collect_err:
+        return jsonify({"success": False, "msg": collect_err}), 400
     test_session = session.get("test_session") or _new_test_session()
 
     if session.get("test_last_category") != category:
@@ -1056,17 +1115,47 @@ def api_admin_test_scan():
     if decision in ("NO_FACE", "MULTI_FACE"):
         session["test_recent_probs"] = []
 
+    crop_rel = None
+    if collect and crop is not None and p_frame is not None \
+            and time.time() - session.get("collect_last_saved", 0) >= COLLECTION_MIN_INTERVAL_S:
+        stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
+        rel = os.path.join(f"session_{collect['session']}", category,
+                           f"{collect['person_id']}__{collect['glasses']}__{collect['lighting']}__{stamp}.png")
+        path = os.path.join(COLLECTION_DIR, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if cv2.imwrite(path, crop):
+            crop_rel = rel
+            session["collect_last_saved"] = time.time()
+
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO test_mode_results (test_session, category, decision, p_spoof_frame, p_spoof_avg, admin_user_id) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (test_session, category, decision, p_frame, p_avg, session["user_id"]),
+        "INSERT INTO test_mode_results (test_session, category, decision, p_spoof_frame, p_spoof_avg, admin_user_id, "
+        "person_id, glasses, lighting, collection_session, crop_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (test_session, category, decision, p_frame, p_avg, session["user_id"],
+         collect["person_id"] if collect else None, collect["glasses"] if collect else None,
+         collect["lighting"] if collect else None, collect["session"] if collect else None, crop_rel),
     )
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "decision": decision, "p_spoof_frame": p_frame, "p_spoof_avg": p_avg,
-                    "face_box": face_box, "test_session": test_session,
-                    "metrics": _test_mode_metrics(test_session)})
+
+    if crop_rel:
+        manifest = os.path.join(COLLECTION_DIR, "manifest.csv")
+        new_file = not os.path.isfile(manifest)
+        with open(manifest, "a", newline="") as fh:
+            w = csv.writer(fh)
+            if new_file:
+                w.writerow(["crop_path", "label", "bona_fide", "person_id", "glasses", "lighting", "session",
+                            "decision", "p_spoof_frame", "p_spoof_avg", "saved_utc"])
+            w.writerow([crop_rel, category, int(TEST_CATEGORIES[category][1]), collect["person_id"],
+                        collect["glasses"], collect["lighting"], collect["session"], decision,
+                        p_frame, p_avg, datetime.utcnow().isoformat(timespec="seconds")])
+
+    out = {"success": True, "decision": decision, "p_spoof_frame": p_frame, "p_spoof_avg": p_avg,
+           "face_box": face_box, "test_session": test_session, "metrics": _test_mode_metrics(test_session)}
+    if collect:
+        out["saved"] = bool(crop_rel)
+        out["collection_counts"] = _collection_counts(collect["person_id"], collect["session"])
+    return jsonify(out)
 
 
 @app.route("/admin/scan_log")

@@ -77,8 +77,19 @@ CREATE TABLE IF NOT EXISTS test_mode_results (
     p_spoof_frame REAL,
     p_spoof_avg REAL,
     admin_user_id INTEGER,
+    person_id TEXT,
+    glasses TEXT,
+    lighting TEXT,
+    collection_session INTEGER,
+    crop_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- Existing Postgres databases: collection-mode columns (Phase 3).
+ALTER TABLE test_mode_results ADD COLUMN IF NOT EXISTS person_id TEXT;
+ALTER TABLE test_mode_results ADD COLUMN IF NOT EXISTS glasses TEXT;
+ALTER TABLE test_mode_results ADD COLUMN IF NOT EXISTS lighting TEXT;
+ALTER TABLE test_mode_results ADD COLUMN IF NOT EXISTS collection_session INTEGER;
+ALTER TABLE test_mode_results ADD COLUMN IF NOT EXISTS crop_path TEXT;
 
 -- Browsers an admin approved as the attendance scanner. The device holds a
 -- random token in a cookie; only its SHA-256 hash is stored here.

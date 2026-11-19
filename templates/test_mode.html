@@ -31,6 +31,26 @@
                 <label for="cat_{{ key }}">{{ label }}<small>{{ 'real person' if bona else 'attack' }}</small></label>
                 {% endfor %}
             </div>
+            <details id="tmCollect" style="margin-bottom:0.85rem; border:1px solid var(--border); border-radius:10px; padding:0.6rem 0.75rem;">
+                <summary style="cursor:pointer; font-size:0.78rem; font-weight:700; color:var(--text-secondary);">
+                    <i class="fa-solid fa-database"></i> Collection mode (domain adaptation data)
+                </summary>
+                <p style="font-size:0.7rem; color:var(--text-muted); margin:0.5rem 0;">
+                    When on, the face crop of each recorded frame (at most one per second) is saved with its label and scores
+                    to <code>data/domain_adaptation/</code> (not in git). See <code>docs/domain_adaptation_plan.md</code>.
+                    Only collect from people who agreed to it.
+                </p>
+                <label style="display:flex; gap:0.5rem; align-items:center; font-size:0.8rem; font-weight:700; margin-bottom:0.5rem;">
+                    <input type="checkbox" id="cOn"> Save face crops
+                </label>
+                <div class="filter-row" style="margin-bottom:0.25rem;">
+                    <div><label for="cPerson">Person ID</label><input id="cPerson" class="form-control" maxlength="20" placeholder="P01"></div>
+                    <div><label for="cGlasses">Glasses</label><select id="cGlasses" class="form-control"><option value="no_glasses">No glasses</option><option value="glasses">Glasses</option></select></div>
+                    <div><label for="cLight">Light</label><select id="cLight" class="form-control"><option value="normal">Normal</option><option value="dim">Dim</option></select></div>
+                    <div><label for="cSession">Session</label><select id="cSession" class="form-control"><option value="1">1 (adaptation)</option><option value="2">2 (test only)</option></select></div>
+                </div>
+                <div id="cCounts" style="font-size:0.72rem; color:var(--text-muted);"></div>
+            </details>
             <div class="tm-video">
                 <video id="tmVideo" autoplay muted playsinline></video>
                 <canvas id="tmOverlay"></canvas>
@@ -122,6 +142,26 @@
         ctx.fillStyle = '#000'; ctx.fillText(label, x + 5, Math.max(14, y - 6));
     }
 
+    function collectSettings() {
+        if (!document.getElementById('cOn').checked) return null;
+        return {
+            person_id: document.getElementById('cPerson').value.trim(),
+            glasses: document.getElementById('cGlasses').value,
+            lighting: document.getElementById('cLight').value,
+            session: document.getElementById('cSession').value,
+        };
+    }
+
+    function renderCounts(rows, c) {
+        const el = document.getElementById('cCounts');
+        if (!rows.length) { el.textContent = 'No crops saved yet for this person and session.'; return; }
+        const esc = v => String(v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+        let html = `<div style="margin:0.4rem 0 0.25rem; font-weight:700;">Saved crops: ${esc(c.person_id)}, session ${esc(c.session)}</div>` +
+                   '<div class="table-scroll"><table><thead><tr><th>Shown</th><th>Glasses</th><th>Light</th><th>Crops</th></tr></thead><tbody>';
+        rows.forEach(r => { html += `<tr><td>${esc(r.category)}</td><td>${esc(r.glasses)}</td><td>${esc(r.lighting)}</td><td class="num">${r.n}</td></tr>`; });
+        el.innerHTML = html + '</tbody></table></div>';
+    }
+
     async function loadMetrics(sess) {
         const el = document.getElementById('tmTable');
         el.innerHTML = '<div class="loading-state"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading…</div>';
@@ -142,9 +182,12 @@
             try {
                 const image = captureFrame('tmVideo');
                 if (image) {
+                    const payload = { image, category: category() };
+                    const collect = collectSettings();
+                    if (collect) payload.collect = collect;
                     const r = await fetch("{{ url_for('api_admin_test_scan') }}", {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image, category: category() })
+                        body: JSON.stringify(payload)
                     });
                     const res = await r.json();
                     if (!r.ok || !res.success) throw new Error(res.msg || ('HTTP ' + r.status));
@@ -155,7 +198,9 @@
                         ? `frame ${res.p_spoof_frame.toPrecision(3)} · avg ${res.p_spoof_avg.toPrecision(3)}` : '';
                     drawBox(res);
                     if (viewSession === res.test_session) renderTable(res.metrics);
-                    statusEl.textContent = 'Recording… nothing here marks attendance.';
+                    statusEl.textContent = 'Recording… nothing here marks attendance.' +
+                        (collect ? (res.saved ? ' Crop saved.' : '') : '');
+                    if (res.collection_counts) renderCounts(res.collection_counts, collect);
                 }
             } catch (e) {
                 statusEl.textContent = 'Error: ' + e.message;
