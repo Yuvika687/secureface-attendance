@@ -46,6 +46,13 @@
                 </a>
             </div>
 
+            <div class="nav-group-title">Liveness</div>
+            <div class="nav-links">
+                <a href="{{ url_for('admin_pipeline_view') }}" class="{% if request.endpoint == 'admin_pipeline_view' %}active{% endif %}">
+                    <i class="fa-solid fa-diagram-project"></i> Pipeline View
+                </a>
+            </div>
+
             <div class="nav-group-title">System</div>
             <div class="nav-links">
                 <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">

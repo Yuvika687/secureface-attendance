@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block title %}Pipeline View - SecureFace Attendance{% endblock %}
+{% block page_title %}Pipeline View{% endblock %}
+{% block page_subtitle %}See each stage of the liveness check for the current camera frame. Never marks attendance.{% endblock %}
+
+{% block content %}
+<style>
+.pv-grid { display:grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap:1rem; }
+.pv-stages { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:0.85rem; }
+.pv-stage { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:12px; padding:0.75rem; }
+.pv-stage h4 { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:0.5rem; font-weight:700; }
+.pv-img { width:100%; aspect-ratio:1/1; object-fit:contain; background:#000; border-radius:8px; display:block; }
+.pv-placeholder { width:100%; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; text-align:center; background:#000; border-radius:8px; color:var(--text-muted); font-size:0.75rem; padding:0.5rem; }
+.pv-video-wrap { position:relative; width:100%; background:#000; border-radius:12px; overflow:hidden; }
+.pv-video-wrap video { width:100%; display:block; transform:scaleX(-1); }
+.pv-video-wrap canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.pv-decision { font-size:1.4rem; font-weight:800; }
+.pv-LIVE { color:#10b981; } .pv-SPOOF { color:#f43f5e; } .pv-UNCERTAIN { color:#38bdf8; } .pv-NO_FACE { color:#f59e0b; }
+.pv-row { display:flex; justify-content:space-between; font-size:0.8rem; padding:0.3rem 0; border-bottom:1px solid var(--border); }
+.pv-row span:last-child { font-family:monospace; color:var(--text-primary); }
+.pv-actions { display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.85rem; }
+.pv-status { font-size:0.8rem; color:var(--text-muted); margin-top:0.6rem; min-height:1.2em; }
+@media (max-width: 900px) { .pv-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="pv-grid">
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-video"></i> 1. Camera frame + BlazeFace detection</span>
+        </div>
+        <div class="glass-card-body">
+            <div class="pv-video-wrap">
+                <video id="pvVideo" autoplay muted playsinline></video>
+                <canvas id="pvOverlay"></canvas>
+            </div>
+            <div class="pv-actions">
+                <button type="button" class="btn-primary" id="pvToggle"><i class="fa-solid fa-play"></i> Start</button>
+                <button type="button" class="btn-sm" id="pvExplain" disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Explain (Grad-CAM)</button>
+            </div>
+            <div class="pv-status" id="pvStatus">Press Start to turn on the camera.</div>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <span class="glass-card-title"><i class="fa-solid fa-gauge"></i> 4. Spoof score + decision</span>
+        </div>
+        <div class="glass-card-body">
+            <div class="pv-decision" id="pvDecision">—</div>
+            <div class="pv-row"><span>P(spoof), this frame</span><span id="pvScore">—</span></div>
+            <div class="pv-row"><span>Faces detected</span><span id="pvFaces">—</span></div>
+            <div class="pv-row"><span>Detector confidence</span><span id="pvConf">—</span></div>
+            <div class="pv-row"><span>Crop size (px)</span><span id="pvCropSize">—</span></div>
+            <div class="pv-row"><span>UNCERTAIN band</span><span id="pvBand">—</span></div>
+            <div class="pv-row"><span>SPOOF threshold</span><span id="pvThresh">—</span></div>
+            <p style="font-size:0.72rem; color:var(--text-muted); margin-top:0.6rem;">
+                Decision here is for this single frame. The scanner decides on the average of the last 5 frames.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="glass-card" style="margin-top:1rem;">
+    <div class="glass-card-header">
+        <span class="glass-card-title"><i class="fa-solid fa-layer-group"></i> Stages</span>
+    </div>
+    <div class="glass-card-body">
+        <div class="pv-stages" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="pv-stage">
+                <h4>2. Cropped face (+25% margin)</h4>
+                <div id="pvCropBox" class="pv-placeholder">No frame yet</div>
+            </div>
+            <div class="pv-stage">
+                <h4>3. 224×224 model input</h4>
+                <div id="pvInputBox" class="pv-placeholder">No frame yet</div>
+            </div>
+            <div class="pv-stage">
+                <h4>Grad-CAM</h4>
+                <div id="pvCamBox" class="pv-placeholder">Press Explain to compute</div>
+                <p style="font-size:0.72rem; color:var(--text-muted); margin-top:0.5rem;">Highlighted areas influenced the model's decision most.</p>
+                <p style="font-size:0.68rem; color:var(--text-muted); margin-top:0.25rem;" id="pvCamMeta">Layer: <code>{{ gradcam_layer }}</code></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+(function () {
+    const COLORS = { LIVE: '#10b981', SPOOF: '#f43f5e', UNCERTAIN: '#38bdf8', NO_FACE: '#f59e0b' };
+    const video = document.getElementById('pvVideo');
+    const overlay = document.getElementById('pvOverlay');
+    const statusEl = document.getElementById('pvStatus');
+    const toggleBtn = document.getElementById('pvToggle');
+    const explainBtn = document.getElementById('pvExplain');
+    let running = false, busy = false;
+
+    function setImg(boxId, uri, alt) {
+        const box = document.getElementById(boxId);
+        if (!uri) { box.className = 'pv-placeholder'; box.textContent = 'No face'; return; }
+        box.className = '';
+        box.innerHTML = '';
+        const img = document.createElement('img');
+        img.className = 'pv-img'; img.alt = alt; img.src = uri;
+        box.appendChild(img);
+    }
+
+    function drawBoxes(res) {
+        const rect = overlay.getBoundingClientRect();
+        overlay.width = rect.width; overlay.height = rect.height;
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        if (!res || !res.boxes) return;
+        const sx = overlay.width / res.frame_width, sy = overlay.height / res.frame_height;
+        const color = COLORS[res.state] || '#f59e0b';
+        res.boxes.forEach(b => {
+            // video preview is mirrored, so mirror the box too
+            const x = overlay.width - (b.x + b.width) * sx, y = b.y * sy, w = b.width * sx, h = b.height * sy;
+            ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+            const label = `${res.state || ''} · face ${(b.confidence * 100).toFixed(1)}%`;
+            ctx.font = '600 13px Inter, sans-serif';
+            const tw = ctx.measureText(label).width + 10;
+            ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - 20), tw, 20);
+            ctx.fillStyle = '#000'; ctx.fillText(label, x + 5, Math.max(14, y - 6));
+        });
+    }
+
+    function render(res) {
+        const state = res.state || 'NO_FACE';
+        const dec = document.getElementById('pvDecision');
+        dec.textContent = state === 'NO_FACE' ? 'NO FACE' : state;
+        dec.className = 'pv-decision pv-' + state;
+        document.getElementById('pvFaces').textContent = res.face_count ?? '—';
+        document.getElementById('pvScore').textContent = res.p_spoof !== undefined ? res.p_spoof.toPrecision(4) : '—';
+        const best = (res.boxes || []).slice().sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        document.getElementById('pvConf').textContent = best ? (best.confidence * 100).toFixed(1) + '%' : '—';
+        document.getElementById('pvCropSize').textContent = res.crop_size ? res.crop_size.join(' × ') : '—';
+        document.getElementById('pvBand').textContent = res.band_low !== undefined ? `${res.band_low.toFixed(4)} – ${res.band_high.toFixed(4)}` : '—';
+        document.getElementById('pvThresh').textContent = res.threshold !== undefined ? res.threshold : '—';
+        setImg('pvCropBox', res.crop, 'Cropped face');
+        setImg('pvInputBox', res.model_input, '224×224 model input');
+        drawBoxes(res);
+        explainBtn.disabled = !res.crop;
+        if (res.multi_face) statusEl.textContent = 'More than one face: showing the largest one.';
+        else if (res.msg) statusEl.textContent = res.msg;
+        else statusEl.textContent = 'Running.';
+    }
+
+    async function send(explain) {
+        const image = captureFrame('pvVideo');
+        if (!image) return null;
+        const r = await fetch("{{ url_for('api_admin_pipeline_frame') }}", {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image, explain: !!explain })
+        });
+        const res = await r.json();
+        if (!r.ok || !res.success) throw new Error(res.msg || ('HTTP ' + r.status));
+        return res;
+    }
+
+    async function loop() {
+        if (!running) return;
+        if (!busy) {
+            busy = true;
+            try { const res = await send(false); if (res && running) render(res); }
+            catch (e) { statusEl.textContent = 'Error: ' + e.message; }
+            busy = false;
+        }
+        setTimeout(loop, 250);
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        if (running) {
+            running = false; stopCamera();
+            toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
+            statusEl.textContent = 'Stopped.';
+            explainBtn.disabled = true;
+            return;
+        }
+        statusEl.textContent = 'Starting camera…';
+        startCamera('pvVideo');
+        running = true;
+        toggleBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
+        video.addEventListener('loadeddata', () => loop(), { once: true });
+    });
+
+    explainBtn.addEventListener('click', async () => {
+        explainBtn.disabled = true;
+        const camBox = document.getElementById('pvCamBox');
+        camBox.className = 'pv-placeholder'; camBox.textContent = 'Computing Grad-CAM…';
+        // Pause the live loop so the Grad-CAM matches the frame shown.
+        const wasRunning = running; running = false;
+        while (busy) await new Promise(r => setTimeout(r, 30));
+        try {
+            const res = await send(true);
+            render(res);
+            if (res.gradcam) {
+                setImg('pvCamBox', res.gradcam, 'Grad-CAM overlay');
+                document.getElementById('pvCamMeta').innerHTML =
+                    `Layer: <code>${res.gradcam_layer}</code> · explains ${res.gradcam_explains}`;
+            } else {
+                camBox.className = 'pv-placeholder'; camBox.textContent = 'No face in this frame.';
+            }
+            statusEl.textContent = 'Paused on the explained frame. Press Start to resume.';
+            stopCamera();
+            toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
+        } catch (e) {
+            camBox.className = 'pv-placeholder'; camBox.textContent = 'Error: ' + e.message;
+            running = wasRunning; if (running) loop();
+        }
+        explainBtn.disabled = false;
+    });
+})();
+</script>
+{% endblock %}

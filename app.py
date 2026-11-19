@@ -7,6 +7,11 @@ import time
 import hashlib
 import secrets
 import math
+import base64
+import copy
+import threading
+import cv2
+import numpy as np
 from collections import deque
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for, Response
@@ -679,6 +684,104 @@ def admin_dev_clear_today_attendance():
     conn.close()
     flash(f"[DEV] Cleared {deleted} attendance record(s) for {today}.", "success")
     return redirect(url_for("admin_dashboard"))
+
+
+# ============================================================
+#  PIPELINE VIEW + GRAD-CAM (admin only; never marks attendance,
+#  never writes scan logs, never saves images to disk)
+# ============================================================
+
+# Grad-CAM target: the last convolutional block of MobileNetV3-Small,
+# feature_extractor.features[12] (Conv2dNormActivation 96->576, 7x7 output
+# for a 224x224 input) -- the same layer training/src/gradcam.py uses.
+GRADCAM_LAYER_NAME = "feature_extractor.features[12]"
+_gradcam_lock = threading.Lock()
+_gradcam_model = None   # private deep copy so Grad-CAM hooks never touch the live scanner's model
+
+
+def _get_gradcam_model():
+    global _gradcam_model
+    if _gradcam_model is None:
+        _gradcam_model = copy.deepcopy(_liveness_predictor.model)
+        _gradcam_model.eval()
+    return _gradcam_model
+
+
+def _bgr_to_data_uri(img_bgr, ext=".jpg"):
+    ok, buf = cv2.imencode(ext, img_bgr)
+    if not ok:
+        return None
+    mime = "image/png" if ext == ".png" else "image/jpeg"
+    return f"data:{mime};base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+@app.route("/admin/pipeline_view")
+def admin_pipeline_view():
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    return render_template("pipeline_view.html", gradcam_layer=GRADCAM_LAYER_NAME)
+
+
+@app.route("/api/admin/pipeline_frame", methods=["POST"])
+def api_admin_pipeline_frame():
+    """One frame through detection -> crop -> 224x224 model input -> liveness
+    score/decision, optionally with Grad-CAM. Pure inspection: no session
+    smoothing, no recognition, no attendance, no logging, nothing on disk."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "msg": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    frame = data_uri_to_cv2_img(data.get("image") or "") if data.get("image") else None
+    if frame is None:
+        return jsonify({"success": False, "msg": "Could not decode image."}), 400
+
+    frame_h, frame_w = frame.shape[:2]
+    detections = _liveness_detector.detect(frame)
+    boxes = [{"x": d.x, "y": d.y, "width": d.width, "height": d.height,
+              "confidence": round(float(d.confidence), 4)} for d in detections]
+    out = {"success": True, "frame_width": frame_w, "frame_height": frame_h,
+           "boxes": boxes, "face_count": len(detections)}
+    if not detections:
+        out.update(state="NO_FACE", msg="No face detected.")
+        return jsonify(out)
+
+    best = max(detections, key=lambda d: d.width * d.height)
+    crop = crop_face(frame, best)
+    if crop is None or crop.size == 0:
+        out.update(state="NO_FACE", msg="Face too close to the frame edge.")
+        return jsonify(out)
+
+    # 224x224 model input = the predictor's own Resize step (before ToTensor /
+    # ImageNet normalization), so this is exactly what the network sees.
+    from liveness.face_utils import bgr_crop_to_pil
+    pil = bgr_crop_to_pil(crop)
+    model_input_rgb = np.array(_liveness_predictor.transform.transforms[0](pil))
+    model_input_bgr = cv2.cvtColor(model_input_rgb, cv2.COLOR_RGB2BGR)
+
+    p_spoof = _liveness_predictor.predict_prob(crop)
+    liveness_threshold = float(get_setting('liveness_threshold', '0.5'))
+    decision = classify_three_way(p_spoof, *_gray_zone_band, threshold=liveness_threshold)
+    out.update(
+        state=decision, p_spoof=p_spoof, multi_face=len(detections) > 1,
+        band_low=_gray_zone_band[0], band_high=_gray_zone_band[1], threshold=liveness_threshold,
+        crop=_bgr_to_data_uri(crop), crop_size=[int(crop.shape[1]), int(crop.shape[0])],
+        model_input=_bgr_to_data_uri(model_input_bgr, ".png"),
+    )
+
+    if data.get("explain"):
+        from utils.gradcam import GradCAM, overlay_heatmap
+        tensor = _liveness_predictor.transform(pil).unsqueeze(0).to(_liveness_predictor.device)
+        with _gradcam_lock:
+            model = _get_gradcam_model()
+            with GradCAM(model, model.feature_extractor.features[12]) as cam:
+                heatmap, cam_prob = cam(tensor)
+        overlay = overlay_heatmap(model_input_bgr, heatmap)
+        out.update(
+            gradcam=_bgr_to_data_uri(overlay, ".png"),
+            gradcam_layer=GRADCAM_LAYER_NAME,
+            gradcam_explains="spoof evidence" if cam_prob >= 0.5 else "live evidence",
+            gradcam_p_spoof=cam_prob,
+        )
+    return jsonify(out)
 
 
 @app.route("/admin/scan_log")
