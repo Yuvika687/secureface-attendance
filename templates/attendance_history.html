@@ -200,7 +200,8 @@ function submitEdit() {
         closeEditModal();
         showToast(data.msg, data.success ? 'success' : 'error');
         if (data.success) setTimeout(() => location.reload(), 1500);
-    });
+    })
+    .catch(() => showToast('Network error: the change was not saved.', 'error'));
 }
 </script>
 {% endblock %}

@@ -51,6 +51,18 @@
                 <a href="{{ url_for('admin_pipeline_view') }}" class="{% if request.endpoint == 'admin_pipeline_view' %}active{% endif %}">
                     <i class="fa-solid fa-diagram-project"></i> Pipeline View
                 </a>
+                <a href="{{ url_for('admin_test_mode') }}" class="{% if request.endpoint == 'admin_test_mode' %}active{% endif %}">
+                    <i class="fa-solid fa-flask"></i> Test Mode
+                </a>
+                <a href="{{ url_for('admin_spoof_log') }}" class="{% if request.endpoint == 'admin_spoof_log' %}active{% endif %}">
+                    <i class="fa-solid fa-user-secret"></i> Spoof Log
+                </a>
+                <a href="{{ url_for('admin_scan_log') }}" class="{% if request.endpoint == 'admin_scan_log' %}active{% endif %}">
+                    <i class="fa-solid fa-list"></i> Scan Log
+                </a>
+                <a href="{{ url_for('admin_results') }}" class="{% if request.endpoint == 'admin_results' %}active{% endif %}">
+                    <i class="fa-solid fa-chart-column"></i> Results
+                </a>
             </div>
 
             <div class="nav-group-title">System</div>

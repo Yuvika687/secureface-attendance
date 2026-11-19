@@ -145,7 +145,7 @@
             transform: scale(1.05); border-radius: 18px;
         }
         .target-container.alert .bracket {
-            border-color: #f87171; box-shadow: 0 0 30px var(--danger-glow);
+            border-color: #f43f5e; box-shadow: 0 0 30px var(--danger-glow);
             transform: scale(0.95);
         }
         /* UNCERTAIN: distinct from success (green), alert (red), and "no
@@ -178,20 +178,24 @@
         .status-title { font-size: 1.45rem; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.3px; }
         .status-desc { font-size: 0.88rem; color: #94a3b8; font-weight: 400; }
         
-        /* Confidence & Score Meter */
-        .meter-row {
-            display: flex; gap: 1rem; margin-top: 10px; justify-content: center; flex-wrap: wrap;
+        /* Status colors carry meaning only: green LIVE, red SPOOF,
+           blue UNCERTAIN, orange no face / more than one face. */
+        .target-container.live .bracket { border-color: #10b981; }
+        .target-container.noface .bracket { border-color: #f59e0b; box-shadow: 0 0 30px rgba(245,158,11,0.5); }
+        .status-panel.noface { border-color: #f59e0b; background: rgba(120, 53, 15, 0.5); }
+
+        /* Label drawn on the real face box */
+        .box-label {
+            position: absolute; left: 0; top: -30px;
+            padding: 3px 10px; border-radius: 8px;
+            font-size: 0.78rem; font-weight: 800; letter-spacing: 0.03em; color: #000;
+            background: #10b981; white-space: nowrap; display: none;
+            max-width: 260px; overflow: hidden; text-overflow: ellipsis;
         }
-        .meter {
-            display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600; color: #64748b;
-        }
-        .meter-bar {
-            width: 60px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
-        }
-        .meter-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
-        .meter-fill.green { background: #10b981; }
-        .meter-fill.yellow { background: #f59e0b; }
-        .meter-fill.red { background: #f43f5e; }
+        .target-container.tracking .box-label { display: block; }
+        .target-container.alert .box-label { background: #f43f5e; }
+        .target-container.uncertain .box-label { background: #38bdf8; }
+        .target-container.noface .box-label { background: #f59e0b; }
 
         /* Debug Overlay */
         .debug-panel {
@@ -267,11 +271,11 @@
             <span>SecureFace Attendance</span>
         </div>
         <div class="nav-btns">
-            <a href="{{ url_for('login') }}" class="auth-btn">
-                <i class="fa-solid fa-user"></i> Student Login
+            <a href="{{ url_for('how_it_works') }}" class="auth-btn">
+                <i class="fa-solid fa-circle-info"></i> How it works
             </a>
-            <a href="{{ url_for('admin_login') }}" class="auth-btn" style="border-color:rgba(139,92,246,0.2);">
-                <i class="fa-solid fa-shield-halved" style="color:#8b5cf6;"></i> Admin
+            <a href="{{ url_for('login') }}" class="auth-btn">
+                <i class="fa-solid fa-right-to-bracket"></i> Log in
             </a>
         </div>
     </div>
@@ -329,11 +333,11 @@
 
     <!-- Debug overlay (toggle with 'D' key) -->
     <div class="debug-panel" id="debugPanel">
-        <div><span class="debug-label">Confidence:</span> <span id="dbgConf" class="val">—</span></div>
-        <div><span class="debug-label">Liveness Score:</span> <span id="dbgSpoof" class="val">—</span></div>
+        <div><span class="debug-label">P(spoof) avg:</span> <span id="dbgSpoof" class="val">—</span></div>
+        <div><span class="debug-label">Match similarity:</span> <span id="dbgConf" class="val">—</span></div>
         <div><span class="debug-label">EAR:</span> <span id="dbgEar" class="val">—</span></div>
         <div><span class="debug-label">Eyes:</span> <span id="dbgEyes" class="val">—</span></div>
-        <div><span class="debug-label">Depth:</span> <span id="dbgDist" class="val">—</span></div>
+        <div><span class="debug-label">Server time:</span> <span id="dbgDist" class="val">—</span></div>
         <div><span class="debug-label">State:</span> <span id="dbgState" class="val">—</span></div>
         <div style="margin-top:6px; border-top:1px solid rgba(255,255,255,0.05); padding-top:6px;">
             <span class="debug-label">API Time:</span> <span id="dbgLatency" class="val">—</span>
@@ -346,23 +350,12 @@
         <div class="bracket tl"></div><div class="bracket tr"></div>
         <div class="bracket bl"></div><div class="bracket br"></div>
         <div class="scan-laser"></div>
+        <div class="box-label" id="boxLabel"></div>
     </div>
 
     <div class="status-panel" id="statusPanel">
         <div class="status-title" id="sTitle">Step into the frame.</div>
         <div class="status-desc" id="sDesc"></div>
-        <div class="meter-row" id="meterRow" style="display:none;">
-            <div class="meter">
-                <span>Confidence</span>
-                <div class="meter-bar"><div class="meter-fill green" id="confFill" style="width:0%;"></div></div>
-                <span id="confVal">0%</span>
-            </div>
-            <div class="meter">
-                <span>Liveness Score</span>
-                <div class="meter-bar"><div class="meter-fill green" id="spoofFill" style="width:0%;"></div></div>
-                <span id="spoofVal">0</span>
-            </div>
-        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
@@ -376,11 +369,8 @@
         const sTitle = document.getElementById("sTitle");
         const sDesc = document.getElementById("sDesc");
         const vid = document.getElementById("scanVideo");
-        const meterRow = document.getElementById("meterRow");
-        const confFill = document.getElementById("confFill");
-        const confVal = document.getElementById("confVal");
-        const spoofFill = document.getElementById("spoofFill");
-        const spoofVal = document.getElementById("spoofVal");
+        const boxLabel = document.getElementById("boxLabel");
+        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const debugPanel = document.getElementById("debugPanel");
         const frameCounter = document.getElementById("frameCounter");
 
@@ -406,30 +396,13 @@
             // UNCERTAIN / LIVE). This is a data-wiring fix only -- the full
             // visual redesign of this page is a separate pass.
             const lm = res.liveness_metrics || {};
-            const livenessScore = res.p_spoof !== undefined ? Math.round((1 - res.p_spoof) * 100) : 0;
-            document.getElementById('dbgConf').textContent = (res.confidence || 0) + '%';
-            document.getElementById('dbgSpoof').textContent = res.p_spoof !== undefined ? livenessScore : '—';
+            document.getElementById('dbgConf').textContent = res.confidence !== undefined ? (res.confidence / 100).toFixed(2) : '—';
+            document.getElementById('dbgSpoof').textContent = res.p_spoof !== undefined ? res.p_spoof.toPrecision(3) : '—';
             document.getElementById('dbgEar').textContent = lm.ear !== undefined ? lm.ear.toFixed(3) : '—';
             document.getElementById('dbgEyes').textContent = lm.eyes_closed !== undefined ? (lm.eyes_closed ? 'CLOSED' : 'OPEN') : '—';
             document.getElementById('dbgDist').textContent = res.timings && res.timings.total_ms !== undefined ? res.timings.total_ms + 'ms' : '—';
             document.getElementById('dbgState').textContent = res.error ? 'ERROR' : (res.state || '—');
 
-            // Color coding
-            const confEl = document.getElementById('dbgConf');
-            confEl.className = (res.confidence || 0) > 50 ? 'val' : (res.confidence || 0) > 20 ? 'warn' : 'fail';
-            const spoofEl = document.getElementById('dbgSpoof');
-            spoofEl.className = livenessScore > 70 ? 'val' : livenessScore > 40 ? 'warn' : 'fail';
-        }
-
-        function updateMeters(conf, livenessScore) {
-            meterRow.style.display = 'flex';
-            confFill.style.width = conf + '%';
-            confVal.innerText = conf + '%';
-            confFill.className = 'meter-fill ' + (conf > 60 ? 'green' : conf > 30 ? 'yellow' : 'red');
-
-            spoofFill.style.width = livenessScore + '%';
-            spoofVal.innerText = livenessScore;
-            spoofFill.className = 'meter-fill ' + (livenessScore > 70 ? 'green' : livenessScore > 40 ? 'yellow' : 'red');
         }
 
         function updateFaceBox(faceBox) {
@@ -471,11 +444,13 @@
             targetBox.style.height = screenH + 'px';
         }
 
-        function setCamStatus(title, desc, state) {
+        function setCamStatus(title, desc, state, label) {
             sTitle.innerHTML = title;
             sDesc.innerHTML = desc;
+            boxLabel.textContent = label || '';
 
-            targetBox.className = "target-container";
+            const wasTracking = targetBox.classList.contains('tracking');
+            targetBox.className = "target-container" + (wasTracking ? " tracking" : "");
             statusPanel.className = "status-panel";
 
             if (state === 'scanning') {
@@ -492,11 +467,16 @@
                 // reject + log + retry, not a hard failure.
                 targetBox.classList.add("uncertain");
                 statusPanel.classList.add("uncertain");
-            } else if (state === 'alert' || state === 'unregistered') {
+            } else if (state === 'alert') {
+                // SPOOF only
                 targetBox.classList.add("alert");
                 statusPanel.classList.add("error");
-            } else {
-                meterRow.style.display = 'none';
+            } else if (state === 'noface') {
+                targetBox.classList.add("noface");
+                statusPanel.classList.add("noface");
+            } else if (state === 'live') {
+                // LIVE face, but not (yet) a match -- box green, panel neutral
+                targetBox.classList.add("live");
             }
         }
 
@@ -540,14 +520,9 @@
                     
                     updateDebug(res);
 
-                    if (res.confidence !== undefined || res.p_spoof !== undefined) {
-                        const livenessScore = res.p_spoof !== undefined ? Math.round((1 - res.p_spoof) * 100) : 0;
-                        updateMeters(res.confidence || 0, livenessScore);
-                    }
-
                     // Device approval removed while this page was open: stop scanning.
                     if (res.device_not_approved) {
-                        setCamStatus(res.msg, "", "alert");
+                        setCamStatus(esc(res.msg), "", "normal");
                         updateFaceBox(null);
                         return;
                     }
@@ -555,18 +530,18 @@
                     // Handle API error
                     if (res.error) {
                         setCamStatus(
-                            '<i class="fa-solid fa-exclamation-triangle" style="color:#f59e0b;"></i> Engine Error',
-                            `<span style="color:#f87171;">${res.msg || 'Recognition engine failed'}</span>`,
-                            "alert"
+                            '<i class="fa-solid fa-exclamation-triangle"></i> Scanner error',
+                            `<span>${esc(res.msg || 'Recognition engine failed')}</span>`,
+                            "normal"
                         );
                         updateFaceBox(null);
                     } else if (res.multi_face) {
-                        setCamStatus("Multiple Faces", "Only one person at a time.", "alert");
+                        setCamStatus("Only one person at a time.", "", "noface", "MULTIPLE FACES");
                         updateFaceBox(res.face_box || null);
                         consecutiveRecognitions = 0;
                         lastRecognizedUser = null;
                     } else if(res.spoofing_detected) {
-                        setCamStatus("⚠️ Spoof Detected", res.msg || "Spoof detected — please use your real face.", "alert");
+                        setCamStatus("Spoof detected", esc(res.msg || "Spoof detected — please use your real face."), "alert", "SPOOF");
                         updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
@@ -577,7 +552,7 @@
                         // Desc is intentionally blank: the title already
                         // carries the one required message, and repeating it
                         // in the desc was the literal on-screen duplicate.
-                        setCamStatus("Hold still — checking again.", "", "uncertain");
+                        setCamStatus("Hold still — checking again.", "", "uncertain", "UNCERTAIN");
                         updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0;
@@ -606,7 +581,7 @@
                         }
 
                         if (res.success) {
-                            let initials = res.user.substring(0, 2).toUpperCase();
+                            let initials = esc(res.user.substring(0, 2).toUpperCase());
                             let avatar = `<div style="width:56px; height:56px; background:linear-gradient(135deg, #10b981, #06b6d4); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:800; color:#fff; border:3px solid #fff; box-shadow:0 0 25px rgba(16,185,129,0.6); margin:0 auto 10px;">${initials}</div>`;
                             // res.status only exists on a NEWLY-marked attendance
                             // response (see app.py) -- distinguishes a fresh
@@ -614,7 +589,7 @@
                             // the heading matches what actually happened instead
                             // of always claiming "Access Granted".
                             let heading = res.status !== undefined ? "Access Granted" : "Welcome Back";
-                            setCamStatus(avatar + `<div>${heading}</div>`, `<div style='color:#e2e8f0; font-weight:700; font-size:1.1rem;'>${res.user}</div><div style='color:#94a3b8; font-family:monospace; font-size:0.9rem; margin-bottom:4px;'>Student ID: ${res.emp_id}</div><span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${res.msg}${res.status ? ` (${res.status})` : ''}</span>`, "success");
+                            setCamStatus(avatar + `<div>${heading}</div>`, `<div style='color:#e2e8f0; font-weight:700; font-size:1.1rem;'>${esc(res.user)}</div><div style='color:#94a3b8; font-family:monospace; font-size:0.9rem; margin-bottom:4px;'>Student ID: ${esc(res.emp_id)}</div><span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${esc(res.msg)}${res.status ? ` (${esc(res.status)})` : ''}</span>`, "success", `LIVE · ${res.user}`);
                             updateFaceBox(res.face_box || null);
 
                             setTimeout(() => {
@@ -630,17 +605,17 @@
                             // one natural blink (see chat for the honest
                             // replay-attack tradeoff vs. the old random
                             // blink/turn_left/turn_right challenge).
-                            setCamStatus("Scanning...", "", "blink");
+                            setCamStatus("Live face — verifying…", "", "blink", "LIVE");
                             updateFaceBox(res.face_box || null);
                         }
                     } else if(res.face_found) {
                         // Message text comes from the server (one message per
                         // outcome). Account mismatch gets no register link.
                         setCamStatus(
-                            res.msg || "Face not recognized",
+                            esc(res.msg || "Face not recognized"),
                             res.account_mismatch ? "" :
-                                "Not registered? <a href='{{ url_for('login') }}' style='color:#10b981; font-weight:bold;'>Register</a> first.",
-                            "unregistered"
+                                "Not registered? <a href='{{ url_for('register') }}' style='color:#10b981; font-weight:bold;'>Create an account</a> and register your face.",
+                            "live", "LIVE"
                         );
                         updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
@@ -653,8 +628,8 @@
                         }, 2500);
                         return;
                     } else {
-                        setCamStatus("Step into the frame.", "", "normal");
-                        updateFaceBox(null);
+                        setCamStatus("Step into the frame.", "", "noface", "NO FACE");
+                        updateFaceBox(res.face_box || null);
                         eyeWasClosed = false; blinkDetected = false;
                         consecutiveRecognitions = 0; lastRecognizedUser = null;
                     }
@@ -665,7 +640,7 @@
                     if (e.name === 'AbortError') {
                         setCamStatus(
                             '<i class="fa-solid fa-hourglass-half" style="color:#f59e0b;"></i> Processing...',
-                            '<span style="color:#94a3b8;">Free tier processing taking longer than expected...</span>',
+                            '<span style="color:#94a3b8;">The server is taking longer than usual…</span>',
                             "scanning"
                         );
                         isProc = false;
@@ -682,7 +657,7 @@
                                 const dots = '.'.repeat((coldStartSeconds % 3) + 1);
                                 setCamStatus(
                                     '<i class="fa-solid fa-server" style="color:#8b5cf6;"></i> Server Busy' + dots,
-                                    `<span style="color:#a78bfa;">API is taking time due to free tier limits — ${coldStartSeconds}s elapsed. Please wait.</span>`,
+                                    `<span style="color:#a78bfa;">Waiting for the server — ${coldStartSeconds}s. Please wait.</span>`,
                                     "scanning"
                                 );
                             }, 1000);
@@ -694,7 +669,7 @@
                     } else {
                         setCamStatus(
                             '<i class="fa-solid fa-wifi" style="color:#f59e0b;"></i> Connecting...',
-                            '<span style="color:#94a3b8;">Establishing connection to AI engine</span>',
+                            '<span style="color:#94a3b8;">Connecting to the scanner server…</span>',
                             "scanning"
                         );
                     }

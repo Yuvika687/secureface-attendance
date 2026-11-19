@@ -315,6 +315,10 @@ fetch('/api/system_status')
             const cls = d.status === 'Healthy' || d.status === 'Online' || d.status === 'Active' || d.status === 'Enabled' ? 'ok' : d.status === 'Disabled' ? 'warn' : 'err';
             return `<div class="sys-row"><span class="sys-label"><i class="fa-solid ${item.icon}" style="color:${item.color}"></i> ${item.key.charAt(0).toUpperCase() + item.key.slice(1)}</span><span class="sys-val ${cls}" title="${d.detail}">${d.status}</span></div>`;
         }).join('');
+    })
+    .catch(() => {
+        document.getElementById('sysStatusBody').innerHTML =
+            '<div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i>Could not load system status.</div>';
     });
 
 // Manual Entry

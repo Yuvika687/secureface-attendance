@@ -66,7 +66,13 @@
                     <span class="status-badge late"><i class="fa-regular fa-clock"></i> Pending</span>
                     {% endif %}
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
+                    <form method="POST" action="{{ url_for('admin_reset_face', user_id=emp['id']) }}" style="display:inline;" data-confirm="Reset face for {{ emp['name'] }} ({{ emp['employee_id'] }})? Their saved face samples will be deleted and they must register their face again. Attendance records are kept." onsubmit="return confirm(this.dataset.confirm);">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-sm" title="Clear face samples so the student can register again">
+                            <i class="fa-solid fa-arrows-rotate"></i> Reset face
+                        </button>
+                    </form>
                     <form method="POST" action="{{ url_for('manage_employees') }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their data? This cannot be undone.');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete">

@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block title %}Results - SecureFace Attendance{% endblock %}
+{% block page_title %}Results{% endblock %}
+{% block page_subtitle %}Liveness model results, read from training/results/summary.json{% endblock %}
+
+{% macro pct(x) %}{% if x is not none %}{{ '%.2f'|format(x * 100) }}%{% else %}—{% endif %}{% endmacro %}
+
+{% block content %}
+<style>
+.r-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
+.r-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:0.9rem 1rem; }
+.r-card .k { font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; font-weight:700; letter-spacing:0.04em; }
+.r-card .v { font-size:1.5rem; font-weight:800; color:var(--text-primary); margin-top:0.2rem; }
+.r-section { margin-bottom:1.25rem; }
+.r-note { font-size:0.72rem; color:var(--text-muted); margin:0.4rem 0 0.75rem; line-height:1.5; }
+.r-plots { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0.85rem; }
+.r-plots figure { margin:0; background:#fff; border-radius:10px; padding:0.4rem; }
+.r-plots img { width:100%; display:block; border-radius:6px; }
+.r-plots figcaption { font-size:0.72rem; color:#334155; padding:0.35rem 0.25rem 0.1rem; }
+.r-pre { white-space:pre-wrap; font-family:monospace; font-size:0.72rem; color:var(--text-secondary); background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:0.85rem; max-height:320px; overflow:auto; }
+.live-banner { border:1px dashed var(--accent-gold); border-radius:14px; padding:1rem; }
+</style>
+
+{% if error %}
+<div class="glass-card"><div class="glass-card-body"><div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i>{{ error }}</div></div></div>
+{% else %}
+
+{% set h = s.headline %}
+<div class="r-section">
+    <h3 style="font-size:1rem; font-weight:800; margin-bottom:0.25rem;">Dataset results: deployed model</h3>
+    <p class="r-note">{{ h.active_model }} · n = {{ h.n }} test images · {{ h.protocol }}</p>
+    <div class="r-cards">
+        <div class="r-card"><div class="k">Accuracy</div><div class="v">{{ pct(h.accuracy) }}</div></div>
+        <div class="r-card"><div class="k">APCER</div><div class="v">{{ pct(h.apcer) }}</div></div>
+        <div class="r-card"><div class="k">BPCER</div><div class="v">{{ pct(h.bpcer) }}</div></div>
+        <div class="r-card"><div class="k">HTER</div><div class="v">{{ pct(h.hter) }}</div></div>
+    </div>
+    <p class="r-note">APCER = attacks accepted as real. BPCER = real faces rejected as attacks. HTER = average of the two.</p>
+</div>
+
+{% set vv = s.v1_vs_v2 %}
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-crop-simple"></i> v1 → v2: the crop fix</span></div>
+    <div class="glass-card-body">
+        <p class="r-note">v1 was trained on differently framed crops than the live pipeline produces; v2 was retrained on crops made the same way the live pipeline crops faces. Same {{ vv.n }}-image test set.</p>
+        <div class="table-scroll"><table>
+            <thead><tr><th>Model</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
+            <tbody>
+                <tr><td>v1</td><td class="num">{{ pct(vv.v1.accuracy) }}</td><td class="num">{{ pct(vv.v1.apcer) }}</td><td class="num">{{ pct(vv.v1.bpcer) }}</td><td class="num">{{ pct(vv.v1.hter) }}</td></tr>
+                <tr><td>v2 (deployed)</td><td class="num">{{ pct(vv.v2.accuracy) }}</td><td class="num">{{ pct(vv.v2.apcer) }}</td><td class="num">{{ pct(vv.v2.bpcer) }}</td><td class="num">{{ pct(vv.v2.hter) }}</td></tr>
+            </tbody>
+        </table></div>
+        <h4 style="font-size:0.8rem; margin:1rem 0 0.4rem;">APCER per attack type</h4>
+        <div class="table-scroll"><table>
+            <thead><tr><th>Attack type</th><th>n</th><th>v1 APCER</th><th>v2 APCER</th></tr></thead>
+            <tbody>
+            {% for name, v2 in vv.per_attack_type_apcer.v2.items() %}
+                <tr><td>{{ name }}</td><td class="num">{{ v2.n }}</td><td class="num">{{ pct(vv.per_attack_type_apcer.v1[name].apcer) }}</td><td class="num">{{ pct(v2.apcer) }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-chart-line"></i> Training curves and confusion matrices (v2)</span></div>
+    <div class="glass-card-body">
+        <div class="r-plots">
+            {% for key, cap in [('training_curves', 'Training curves (v2, face-crop trained)'), ('confusion_test', 'Confusion matrix: test set'), ('confusion_val', 'Confusion matrix: validation set'), ('breakdown_spoof_type', 'APCER by spoof type (v2)'), ('gray_zone_curve', 'Gray zone: coverage vs. error')] %}
+                {% if plots[key] %}
+                <figure><img loading="lazy" src="{{ url_for('admin_results_plot', name=key) }}" alt="{{ cap }}"><figcaption>{{ cap }}</figcaption></figure>
+                {% else %}
+                <div class="empty-state" style="border:1px solid var(--border); border-radius:10px;"><i class="fa-regular fa-image"></i>{{ cap }}: plot file not found</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% set bc = s.backbone_comparison %}
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-scale-balanced"></i> Backbone comparison</span></div>
+    <div class="glass-card-body">
+        <p class="r-note">All three trained on the same face crops and tested on the same {{ bc.n }} images. Deployed backbone: <strong>{{ bc.deployed_backbone }}</strong>.</p>
+        <div class="table-scroll"><table>
+            <thead><tr><th>Backbone</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th><th>Params</th><th>File size</th><th>CPU ms (PyTorch)</th><th>CPU ms (ONNX)</th><th>MPS ms</th></tr></thead>
+            <tbody>
+            {% for b in ['mobilenet_v3_small', 'efficientnet_b0', 'resnet18'] %}
+                {% set m = bc[b] %}{% set l = bc.latency_and_size[b] %}
+                <tr>
+                    <td>{{ b }}{% if b == bc.deployed_backbone %} <span class="state-badge state-LIVE">deployed</span>{% endif %}</td>
+                    <td class="num">{{ pct(m.accuracy) }}</td><td class="num">{{ pct(m.apcer) }}</td><td class="num">{{ pct(m.bpcer) }}</td><td class="num">{{ pct(m.hter) }}</td>
+                    <td class="num">{{ '{:,}'.format(l.param_count) }}</td>
+                    <td class="num">{{ '%.2f'|format(l.model_file_size_mb) }} MB</td>
+                    <td class="num">{{ '%.2f'|format(l.latency_cpu_ms_median) }}</td>
+                    <td class="num">{{ '%.2f'|format(l.cpu_onnx_ms) }}</td>
+                    <td class="num">{{ '%.2f'|format(l.latency_mps_ms_median) }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        <p class="r-note">Latency columns are median single-image inference times from the training project's benchmark ({{ bc.latency_and_size.mobilenet_v3_small.n_timed_runs }} runs), not full-pipeline times.</p>
+    </div>
+</div>
+
+{% set gz = s.gray_zone %}
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-circle-half-stroke"></i> UNCERTAIN band (gray zone)</span></div>
+    <div class="glass-card-body">
+        <p class="r-note">Band chosen on the validation set only: P(spoof) between {{ '%.4f'|format(gz.band_low) }} and {{ '%.4f'|format(gz.band_high) }} → UNCERTAIN (retry). On the test set:</p>
+        <div class="table-scroll"><table>
+            <thead><tr><th></th><th>Coverage</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
+            <tbody>
+                <tr><td>Plain 0.5 threshold</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.coverage) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.accuracy) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.apcer) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.bpcer) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.hter) }}</td></tr>
+                <tr><td>With UNCERTAIN band (decided frames)</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.coverage) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.accuracy) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.apcer) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.bpcer) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.hter) }}</td></tr>
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+{% set me = s.masked_eval %}
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-head-side-mask"></i> Masked faces (synthetic mask overlay)</span></div>
+    <div class="glass-card-body">
+        <p class="r-note">{{ me.protocol }}</p>
+        <div class="table-scroll"><table>
+            <thead><tr><th></th><th>n</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
+            <tbody>
+                <tr><td>Masked</td><td class="num">{{ me.masked_metrics.n }}</td><td class="num">{{ pct(me.masked_metrics.accuracy) }}</td><td class="num">{{ pct(me.masked_metrics.apcer) }}</td><td class="num">{{ pct(me.masked_metrics.bpcer) }}</td><td class="num">{{ pct(me.masked_metrics.hter) }}</td></tr>
+                <tr><td>Unmasked (same detection protocol)</td><td class="num">—</td><td class="num">{{ pct(me.unmasked_baseline_metrics.accuracy) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.apcer) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.bpcer) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.hter) }}</td></tr>
+            </tbody>
+        </table></div>
+        <p class="r-note">Face detection rate on masked images: {{ pct(me.stage1_on_masked.detection_rate) }} ({{ me.stage1_on_masked.n_detected }} / {{ me.stage1_on_masked.n_eligible }}). Liveness detection works with masks; face recognition requires the mask to be removed.</p>
+    </div>
+</div>
+
+<div class="glass-card r-section">
+    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-stopwatch"></i> Measured pipeline latency</span></div>
+    <div class="glass-card-body">
+        {% if latency_text %}
+        <p class="r-note">Raw output of <code>scripts/measure_pipeline_latency.py</code> against the running app, saved in <code>{{ latency_file }}</code>.</p>
+        <div class="r-pre">{{ latency_text }}</div>
+        {% else %}
+        <div class="empty-state"><i class="fa-regular fa-file"></i>No saved latency measurement found at {{ latency_file }}.</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="live-banner r-section">
+    <h3 style="font-size:1rem; font-weight:800; margin-bottom:0.25rem;"><i class="fa-solid fa-flask" style="color:var(--accent-gold);"></i> Live test results (this camera, Test Mode)</h3>
+    <p class="r-note">Not dataset numbers. Counted from frames recorded in Test Mode on this installation, across all test sessions. Each frame is one decision (the scanner's 5-frame average).</p>
+    {% if live.total %}
+    <div class="table-scroll"><table>
+        <thead><tr><th>Shown to camera</th><th>Frames</th><th>LIVE</th><th>SPOOF</th><th>UNCERTAIN</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
+        <tbody>
+        {% for r in live.rows if r.n %}
+            <tr><td>{{ r.label }}</td><td class="num">{{ r.n }}</td><td class="num">{{ r.LIVE }}</td><td class="num">{{ r.SPOOF }}</td><td class="num">{{ r.UNCERTAIN }}</td>
+                <td class="num">{{ pct(r.apcer) }}</td><td class="num">{{ pct(r.bpcer) }}</td><td class="num">{{ pct(r.hter) }}</td></tr>
+        {% endfor %}
+            <tr style="font-weight:700;"><td>Overall</td><td class="num">{{ live.total }}</td><td></td><td></td><td></td>
+                <td class="num">{{ pct(live.overall.apcer) }}</td><td class="num">{{ pct(live.overall.bpcer) }}</td><td class="num">{{ pct(live.overall.hter) }}</td></tr>
+        </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty-state"><i class="fa-solid fa-flask"></i>No live test frames recorded yet. Use <a href="{{ url_for('admin_test_mode') }}" style="color:var(--accent-emerald);">Test Mode</a>.</div>
+    {% endif %}
+</div>
+{% endblock %}

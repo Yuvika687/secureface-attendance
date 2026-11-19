@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How It Works - SecureFace Attendance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        body { background: var(--bg-dark); color: var(--text-primary); }
+        .hw { max-width: 960px; margin: 0 auto; padding: 2rem 16px 3rem; }
+        .hw-top { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:2rem; }
+        .hw-logo { display:flex; align-items:center; gap:0.6rem; font-weight:800; font-size:1.1rem; }
+        .hw-logo i { color: var(--accent-emerald); }
+        .hw-links { display:flex; gap:0.5rem; flex-wrap:wrap; }
+        h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 800; margin-bottom: 0.5rem; }
+        .lead { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.6; max-width: 680px; margin-bottom: 2rem; }
+        h2 { font-size: 1.1rem; font-weight: 800; margin: 2rem 0 0.85rem; }
+        .flow { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.65rem; counter-reset: step; }
+        .step { position:relative; background: var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:0.9rem; }
+        .step::before { counter-increment: step; content: counter(step); position:absolute; top:0.6rem; right:0.75rem; font-size:0.7rem; font-weight:800; color:var(--text-muted); }
+        .step i { font-size:1.2rem; color: var(--accent-emerald); margin-bottom:0.5rem; display:block; }
+        .step b { display:block; font-size:0.85rem; margin-bottom:0.25rem; }
+        .step span { font-size:0.75rem; color: var(--text-secondary); line-height:1.45; }
+        .step.stop i { color: var(--state-spoof); }
+        .outcomes { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem; }
+        .models { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .models th, .models td { text-align:left; padding:0.6rem 0.5rem; border-bottom:1px solid var(--border); vertical-align:top; }
+        .models th { font-size:0.7rem; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.04em; }
+        .trained { color: var(--accent-emerald); font-weight:700; }
+        .card { background: var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:1.1rem; font-size:0.85rem; line-height:1.6; color: var(--text-secondary); }
+        .card p + p { margin-top:0.6rem; }
+        .mask-note { border-color: var(--accent-gold); color: var(--text-primary); display:flex; gap:0.75rem; align-items:flex-start; }
+        .mask-note i { color: var(--accent-gold); font-size:1.2rem; margin-top:0.15rem; }
+    </style>
+</head>
+<body>
+<div class="hw">
+    <div class="hw-top">
+        <div class="hw-logo"><i class="fa-solid fa-shield-halved"></i> SecureFace Attendance</div>
+        <div class="hw-links">
+            <a class="btn-sm" href="{{ url_for('home') }}"><i class="fa-solid fa-camera"></i> Scanner</a>
+            <a class="btn-sm" href="{{ url_for('login') }}"><i class="fa-solid fa-right-to-bracket"></i> Log in</a>
+        </div>
+    </div>
+
+    <h1>How it works</h1>
+    <p class="lead">Attendance is marked at one shared scanner. Before it checks who you are, it checks that a real, live person is in front of the camera and not a photo, phone or screen.</p>
+
+    <h2>The scan, step by step</h2>
+    <div class="flow">
+        <div class="step"><i class="fa-solid fa-video"></i><b>Camera frame</b><span>The approved scanner device sends one webcam frame at a time.</span></div>
+        <div class="step"><i class="fa-solid fa-expand"></i><b>Find the face</b><span>BlazeFace finds faces. No face or more than one face: stop and ask again.</span></div>
+        <div class="step"><i class="fa-solid fa-link"></i><b>Same face?</b><span>The face box must overlap the previous frame's box (IoU). A jump means a new person, so start over.</span></div>
+        <div class="step"><i class="fa-solid fa-crop-simple"></i><b>Crop</b><span>Face plus a 25% margin, resized to 224×224, exactly as in training.</span></div>
+        <div class="step"><i class="fa-solid fa-brain"></i><b>Liveness check</b><span>The trained model scores how likely the face is a spoof, averaged over the last 5 frames.</span></div>
+        <div class="step stop"><i class="fa-solid fa-hand"></i><b>Only real faces continue</b><span>SPOOF or UNCERTAIN stops here. Recognition never runs on them.</span></div>
+        <div class="step"><i class="fa-solid fa-id-card"></i><b>Who is it?</b><span>Face Mesh aligns the face; ArcFace compares it with registered students.</span></div>
+        <div class="step"><i class="fa-regular fa-eye"></i><b>Natural blink</b><span>The scanner waits silently for one normal blink.</span></div>
+        <div class="step"><i class="fa-solid fa-circle-check"></i><b>Attendance</b><span>Shows name + student ID with "Attendance marked" or "Already marked today".</span></div>
+    </div>
+    <div class="outcomes">
+        <span class="state-badge state-LIVE">LIVE: real face</span>
+        <span class="state-badge state-SPOOF">SPOOF: photo / screen / video</span>
+        <span class="state-badge state-UNCERTAIN">UNCERTAIN: hold still, retry</span>
+        <span class="state-badge state-NO_FACE">NO FACE</span>
+    </div>
+
+    <h2>Models used</h2>
+    <div class="card" style="padding:0.5rem 0.85rem; overflow-x:auto;">
+        <table class="models">
+            <thead><tr><th>Model</th><th>Job</th><th>Source</th></tr></thead>
+            <tbody>
+                <tr><td>BlazeFace (short range)</td><td>Find faces in the frame</td><td>Pretrained (Google MediaPipe)</td></tr>
+                <tr><td><b>MobileNetV3-Small liveness model</b></td><td>Real face or spoof?</td><td class="trained">Trained for this project</td></tr>
+                <tr><td>MediaPipe Face Mesh</td><td>Face landmarks for alignment and blink (eye openness)</td><td>Pretrained (Google MediaPipe)</td></tr>
+                <tr><td>ArcFace (w600k_r50)</td><td>Who is it? 512-number face signature</td><td>Pretrained (InsightFace)</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Why a trained model for anti-spoofing?</h2>
+    <div class="card">
+        <p>Hand-written rules (texture, screen patterns, depth guesses) break easily: lighting, camera quality and new attack types all change what a "fake" looks like. A trained model learns those differences from thousands of labeled real and spoof examples instead.</p>
+        {% if headline %}
+        <p>On a held-out test set of {{ headline.n }} images, the trained model reached {{ '%.2f'|format(headline.accuracy * 100) }}% accuracy with an HTER of {{ '%.2f'|format(headline.hter * 100) }}% (APCER {{ '%.2f'|format(headline.apcer * 100) }}%, BPCER {{ '%.2f'|format(headline.bpcer * 100) }}%). Webcam conditions differ from dataset photos, so real-world results can differ.</p>
+        {% endif %}
+    </div>
+
+    <h2>Masks</h2>
+    <div class="card mask-note"><i class="fa-solid fa-head-side-mask"></i><div>Liveness detection works with masks. Face recognition requires the mask to be removed.</div></div>
+</div>
+</body>
+</html>

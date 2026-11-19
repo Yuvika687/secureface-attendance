@@ -59,11 +59,26 @@ CREATE TABLE IF NOT EXISTS scan_events (
     test_label TEXT,
     p_spoof_frame REAL,
     p_spoof_avg REAL,
+    iou REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- Existing Postgres databases: add the per-frame score columns.
 ALTER TABLE scan_events ADD COLUMN IF NOT EXISTS p_spoof_frame REAL;
 ALTER TABLE scan_events ADD COLUMN IF NOT EXISTS p_spoof_avg REAL;
+ALTER TABLE scan_events ADD COLUMN IF NOT EXISTS iou REAL;
+
+-- Admin Test Mode: one row per camera frame, labeled with what was shown to
+-- the camera. Never linked to attendance.
+CREATE TABLE IF NOT EXISTS test_mode_results (
+    id SERIAL PRIMARY KEY,
+    test_session TEXT NOT NULL,
+    category TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN', 'NO_FACE', 'MULTI_FACE')),
+    p_spoof_frame REAL,
+    p_spoof_avg REAL,
+    admin_user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Browsers an admin approved as the attendance scanner. The device holds a
 -- random token in a cookie; only its SHA-256 hash is stored here.

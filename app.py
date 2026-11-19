@@ -10,11 +10,13 @@ import math
 import base64
 import copy
 import threading
+import json
+import re
 import cv2
 import numpy as np
 from collections import deque
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for, Response
+from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for, Response, send_file, abort
 from flask_wtf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -126,7 +128,7 @@ if not Config.USE_POSTGRES:
                 conn.commit()
             except Exception:
                 pass
-        for col in ('p_spoof_frame', 'p_spoof_avg'):
+        for col in ('p_spoof_frame', 'p_spoof_avg', 'iou'):
             try:
                 conn.execute(f"SELECT {col} FROM scan_events LIMIT 1")
             except Exception:
@@ -137,7 +139,23 @@ if not Config.USE_POSTGRES:
                     pass
         try:
             conn.execute('''
-                CREATE TABLE IF NOT EXISTS scanner_devices (
+                CREATE TABLE IF NOT EXISTS test_mode_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                test_session TEXT NOT NULL,
+                category TEXT NOT NULL,
+                decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN', 'NO_FACE', 'MULTI_FACE')),
+                p_spoof_frame REAL,
+                p_spoof_avg REAL,
+                admin_user_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute('''
+            CREATE TABLE IF NOT EXISTS scanner_devices (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     token_hash TEXT NOT NULL UNIQUE,
                     label TEXT,
@@ -312,7 +330,7 @@ def _log_liveness_event_if_changed(decision, p_spoof, user_id=None):
 
 
 def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_key=True, test_label=None,
-                    p_spoof_frame=None, p_spoof_avg=None):
+                    p_spoof_frame=None, p_spoof_avg=None, iou=None):
     """Writes one scan_events row for the pipeline STAGE reached this request
     -- for reviewing a test session afterward (what happened, in order).
 
@@ -333,6 +351,9 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
     5-frame smoothed score the decision used. Set on every row logged after
     the liveness model ran; NULL for stages before it (NO_FACE, BlazeFace
     MULTI_FACE, FACE_MOVED) -- no score exists yet for those.
+
+    iou: face-box IoU vs. the previous frame's box (same-face check), for
+    every row logged after a face box exists and a previous box was known.
     """
     sid = _get_liveness_session_id()
     if dedup and session.get('last_logged_stage') == stage:
@@ -341,11 +362,12 @@ def _log_scan_event(stage, user_id=None, detail=None, dedup=True, update_dedup_k
         session['last_logged_stage'] = stage
     conn = get_db_connection()
     conn.execute(
-        "INSERT INTO scan_events (session_id, stage, user_id, detail, test_label, p_spoof_frame, p_spoof_avg) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO scan_events (session_id, stage, user_id, detail, test_label, p_spoof_frame, p_spoof_avg, iou) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (sid, stage, user_id, detail, test_label,
          None if p_spoof_frame is None else float(p_spoof_frame),
-         None if p_spoof_avg is None else float(p_spoof_avg)),
+         None if p_spoof_avg is None else float(p_spoof_avg),
+         None if iou is None else float(iou)),
     )
     conn.commit()
     conn.close()
@@ -381,64 +403,73 @@ def home():
     return render_template("scanner.html", debug_mode=DEBUG_MODE)
 
 
+def _do_login(forced_role=None):
+    """Shared login handler for the single login page. The Student/Admin
+    toggle only says which kind of account the user expects; the account's
+    real role in the DB is what's checked. Wrong password, unknown email, or
+    a role that doesn't match the toggle all give the same message."""
+    role = forced_role or (request.form.get("role") or "student")
+    if role not in ("student", "admin"):
+        role = "student"
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+
+    if not email or not password:
+        flash("Please enter both email and password.", "danger")
+        return render_template("login.html", role=role)
+
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    expected_db_role = "admin" if role == "admin" else "employee"
+    if not user or not check_password_hash(user["password_hash"], password) or user["role"] != expected_db_role:
+        flash("Invalid credentials", "danger")
+        return render_template("login.html", role=role)
+
+    session["user_id"] = user["id"]
+    session["role"] = user["role"]
+    session["name"] = user["name"]
+    session["employee_id"] = user["employee_id"]
+    session["profile_photo"] = user["profile_photo"] or ""
+    return redirect(url_for("admin_dashboard" if user["role"] == "admin" else "employee_dashboard"))
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if "user_id" in session and session.get("role") == "employee":
-        return redirect(url_for("employee_dashboard"))
-
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-
-        if not email or not password:
-            flash("Please enter both email and password.", "danger")
-            return render_template("login.html")
-
-        conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE email = ? AND role = 'employee'", (email,)).fetchone()
-        conn.close()
-
-        if user and check_password_hash(user["password_hash"], password):
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            session["name"] = user["name"]
-            session["employee_id"] = user["employee_id"]
-            session["profile_photo"] = user["profile_photo"] or ""
+    if "user_id" in session:
+        if session.get("role") == "admin":
+            return redirect(url_for("admin_dashboard"))
+        if session.get("role") == "employee":
             return redirect(url_for("employee_dashboard"))
-        else:
-            flash("Invalid email or password.", "danger")
-
-    return render_template("login.html")
+    if request.method == "POST":
+        return _do_login()
+    role = request.args.get("role", "student")
+    return render_template("login.html", role=role if role in ("student", "admin") else "student")
 
 
 @app.route("/admin_login", methods=["GET", "POST"])
 def admin_login():
+    """Kept so existing links/redirects work: shows the single login page
+    with the Admin toggle preselected."""
+    if request.method == "POST":
+        if "user_id" in session and session.get("role") == "admin":
+            return redirect(url_for("admin_dashboard"))
+        return _do_login(forced_role="admin")
     if "user_id" in session and session.get("role") == "admin":
         return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("login", role="admin"))
 
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
 
-        if not email or not password:
-            flash("Please enter both email and password.", "danger")
-            return render_template("admin_login.html")
-
-        conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE email = ? AND role = 'admin'", (email,)).fetchone()
-        conn.close()
-
-        if user and check_password_hash(user["password_hash"], password):
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            session["name"] = user["name"]
-            session["employee_id"] = user["employee_id"]
-            session["profile_photo"] = user["profile_photo"] or ""
-            return redirect(url_for("admin_dashboard"))
-        else:
-            flash("Invalid admin email or password.", "danger")
-
-    return render_template("admin_login.html")
+@app.route("/how_it_works")
+def how_it_works():
+    headline = None
+    try:
+        with open(os.path.join(Config.BASE_DIR, "training", "results", "summary.json")) as fh:
+            headline = json.load(fh).get("headline")
+    except Exception:
+        headline = None
+    return render_template("how_it_works.html", headline=headline)
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -784,6 +815,260 @@ def api_admin_pipeline_frame():
     return jsonify(out)
 
 
+# ============================================================
+#  SPOOF LOG / RESULTS / TEST MODE (admin only)
+# ============================================================
+
+@app.route("/admin/spoof_log")
+def admin_spoof_log():
+    """SPOOF/UNCERTAIN rows from scan_events, filterable, with CSV export.
+    Times are the DB's CURRENT_TIMESTAMP (UTC)."""
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    stage = request.args.get("stage", "all")
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    label = (request.args.get("label") or "").strip()
+
+    where, params = ["stage IN ('SPOOF', 'UNCERTAIN')"], []
+    if stage in ("SPOOF", "UNCERTAIN"):
+        where.append("stage = ?"); params.append(stage)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_from):
+        where.append("date(created_at) >= ?"); params.append(date_from)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_to):
+        where.append("date(created_at) <= ?"); params.append(date_to)
+    if label:
+        where.append("test_label = ?"); params.append(label[:40])
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT id, created_at, stage, p_spoof_frame, p_spoof_avg, iou, test_label, session_id, detail "
+        f"FROM scan_events WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT 2000", params
+    ).fetchall()
+    labels = [r["test_label"] for r in conn.execute(
+        "SELECT DISTINCT test_label FROM scan_events WHERE test_label IS NOT NULL AND test_label != '' ORDER BY test_label"
+    ).fetchall()]
+    conn.close()
+
+    if request.args.get("export") == "csv":
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(["id", "time_utc", "stage", "p_spoof_frame", "p_spoof_avg", "iou", "test_label", "session_id", "detail"])
+        for r in rows:
+            w.writerow([r["id"], r["created_at"], r["stage"], r["p_spoof_frame"], r["p_spoof_avg"], r["iou"],
+                        r["test_label"] or "", r["session_id"], r["detail"] or ""])
+        return Response(out.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=spoof_log.csv"})
+    return render_template("spoof_log.html", rows=rows, labels=labels,
+                           f={"stage": stage, "from": date_from, "to": date_to, "label": label})
+
+
+# Result files read at request time from training/ (never copied as numbers into code).
+RESULTS_SUMMARY_PATH = os.path.join(Config.BASE_DIR, "training", "results", "summary.json")
+LATENCY_FILE_PATH = os.path.join(Config.BASE_DIR, "docs", "pipeline_latency_2026-11-07.txt")
+RESULT_PLOTS = {
+    "training_curves": "training/outputs/plots/v2_cropped/training_curves.png",
+    "confusion_test": "training/outputs/plots/v2_cropped/confusion_matrix_v2_cropped_test.png",
+    "confusion_val": "training/outputs/plots/v2_cropped/confusion_matrix_v2_cropped_val.png",
+    "gray_zone_curve": "training/results/plots/v2/gray_zone_coverage_vs_error.png",
+    "breakdown_spoof_type": "training/results/plots/v2/breakdown_spoof_type.png",
+}
+
+
+@app.route("/admin/results")
+def admin_results():
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    summary, error = None, None
+    try:
+        with open(RESULTS_SUMMARY_PATH) as fh:
+            summary = json.load(fh)
+    except Exception as e:
+        error = f"Could not read training/results/summary.json: {e}"
+    latency_text = None
+    try:
+        with open(LATENCY_FILE_PATH) as fh:
+            latency_text = fh.read()
+    except Exception:
+        latency_text = None
+    plots = {k: os.path.isfile(os.path.join(Config.BASE_DIR, v)) for k, v in RESULT_PLOTS.items()}
+    live = _test_mode_metrics(None)
+    return render_template("results.html", s=summary, error=error, plots=plots,
+                           latency_text=latency_text, latency_file=os.path.relpath(LATENCY_FILE_PATH, Config.BASE_DIR),
+                           live=live)
+
+
+@app.route("/admin/results/plot/<name>")
+def admin_results_plot(name):
+    if session.get("role") != "admin":
+        abort(401)
+    rel = RESULT_PLOTS.get(name)
+    if not rel or not os.path.isfile(os.path.join(Config.BASE_DIR, rel)):
+        abort(404)
+    return send_file(os.path.join(Config.BASE_DIR, rel), mimetype="image/png")
+
+
+# Test Mode: what the admin is showing the camera. Bona fide = real person.
+TEST_CATEGORIES = {
+    "real_face": ("Real face", True),
+    "real_face_masked": ("Masked face", True),
+    "printed_photo": ("Printed photo", False),
+    "phone_photo": ("Phone photo", False),
+    "phone_video": ("Phone video", False),
+    "laptop_screen": ("Laptop screen", False),
+}
+
+
+def _test_mode_metrics(test_session):
+    """Real counts from test_mode_results (one row per camera frame with a
+    single detected face), for one test session or all (None).
+      APCER (attack category) = frames decided LIVE / attack frames
+      BPCER (bona fide)       = frames decided SPOOF / bona fide frames
+      UNCERTAIN frames are counted and shown separately (neither accepted
+      nor rejected as spoof -- the scanner just asks to retry).
+      HTER = (APCER + BPCER) / 2; per attack category it uses that
+      category's APCER with the overall bona fide BPCER."""
+    conn = get_db_connection()
+    q = ("SELECT category, decision, COUNT(*) AS n FROM test_mode_results "
+         "WHERE decision IN ('LIVE','SPOOF','UNCERTAIN')")
+    params = []
+    if test_session:
+        q += " AND test_session = ?"; params.append(test_session)
+    q += " GROUP BY category, decision"
+    counts = {}
+    for r in conn.execute(q, params).fetchall():
+        counts.setdefault(r["category"], {"LIVE": 0, "SPOOF": 0, "UNCERTAIN": 0})[r["decision"]] = r["n"]
+    conn.close()
+
+    def rate(num, den):
+        return (num / den) if den else None
+
+    bona = {"LIVE": 0, "SPOOF": 0, "UNCERTAIN": 0}
+    attack = {"LIVE": 0, "SPOOF": 0, "UNCERTAIN": 0}
+    for cat, c in counts.items():
+        tgt = bona if TEST_CATEGORIES.get(cat, ("", False))[1] else attack
+        for k in tgt:
+            tgt[k] += c[k]
+    bpcer_all = rate(bona["SPOOF"], sum(bona.values()))
+    apcer_all = rate(attack["LIVE"], sum(attack.values()))
+
+    rows = []
+    for key, (label, is_bona) in TEST_CATEGORIES.items():
+        c = counts.get(key, {"LIVE": 0, "SPOOF": 0, "UNCERTAIN": 0})
+        n = sum(c.values())
+        row = {"key": key, "label": label, "bona_fide": is_bona, "n": n, **c,
+               "uncertain_rate": rate(c["UNCERTAIN"], n), "correct": None, "wrong": None,
+               "apcer": None, "bpcer": None, "hter": None}
+        if is_bona:
+            row.update(correct=c["LIVE"], wrong=c["SPOOF"], bpcer=rate(c["SPOOF"], n))
+        else:
+            row.update(correct=c["SPOOF"], wrong=c["LIVE"], apcer=rate(c["LIVE"], n))
+            if row["apcer"] is not None and bpcer_all is not None:
+                row["hter"] = (row["apcer"] + bpcer_all) / 2
+        rows.append(row)
+    overall = {"n_bona": sum(bona.values()), "n_attack": sum(attack.values()),
+               "apcer": apcer_all, "bpcer": bpcer_all,
+               "hter": (apcer_all + bpcer_all) / 2 if apcer_all is not None and bpcer_all is not None else None,
+               "uncertain_bona": bona["UNCERTAIN"], "uncertain_attack": attack["UNCERTAIN"]}
+    return {"rows": rows, "overall": overall, "total": overall["n_bona"] + overall["n_attack"]}
+
+
+def _new_test_session():
+    session["test_session"] = uuid.uuid4().hex[:12]
+    session.pop("test_recent_probs", None)
+    session.pop("test_last_category", None)
+    return session["test_session"]
+
+
+@app.route("/admin/test_mode")
+def admin_test_mode():
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    current = session.get("test_session") or _new_test_session()
+    conn = get_db_connection()
+    sessions = conn.execute(
+        "SELECT test_session, MIN(created_at) AS started, COUNT(*) AS n FROM test_mode_results "
+        "GROUP BY test_session ORDER BY started DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return render_template("test_mode.html", categories=TEST_CATEGORIES, current_session=current,
+                           sessions=sessions, metrics=_test_mode_metrics(current))
+
+
+@app.route("/api/admin/test_mode/new_session", methods=["POST"])
+def api_admin_test_new_session():
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "msg": "Unauthorized"}), 401
+    sid = _new_test_session()
+    return jsonify({"success": True, "test_session": sid, "metrics": _test_mode_metrics(sid)})
+
+
+@app.route("/api/admin/test_mode/metrics")
+def api_admin_test_metrics():
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "msg": "Unauthorized"}), 401
+    sid = request.args.get("session") or None
+    if sid == "all":
+        sid = None
+    return jsonify({"success": True, "test_session": sid, "metrics": _test_mode_metrics(sid)})
+
+
+@app.route("/api/admin/test_scan", methods=["POST"])
+def api_admin_test_scan():
+    """Test Mode frame: BlazeFace -> crop -> liveness model -> 5-frame
+    average -> three-way decision (same functions and thresholds as the
+    scanner). Records the result for Test Mode metrics. Never runs
+    recognition, never touches attendance or the scanner's session state."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "msg": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    category = data.get("category")
+    if category not in TEST_CATEGORIES:
+        return jsonify({"success": False, "msg": "Choose what you are showing the camera."}), 400
+    frame = data_uri_to_cv2_img(data.get("image")) if data.get("image") else None
+    if frame is None:
+        return jsonify({"success": False, "msg": "Could not decode image."}), 400
+    test_session = session.get("test_session") or _new_test_session()
+
+    if session.get("test_last_category") != category:
+        session["test_recent_probs"] = []
+        session["test_last_category"] = category
+
+    detections = _liveness_detector.detect(frame)
+    face_box, p_frame, p_avg, crop = None, None, None, None
+    if len(detections) == 0:
+        decision = "NO_FACE"
+    elif len(detections) > 1:
+        decision = "MULTI_FACE"
+    else:
+        d = detections[0]
+        h, w = frame.shape[:2]
+        face_box = {"x": d.x, "y": d.y, "width": d.width, "height": d.height, "frame_width": w, "frame_height": h}
+        crop = crop_face(frame, d)
+        if crop is None or crop.size == 0:
+            decision = "NO_FACE"
+        else:
+            p_frame = _liveness_predictor.predict_prob(crop)
+            probs = (session.get("test_recent_probs") or [])[-(RECENT_PROBS_WINDOW - 1):] + [p_frame]
+            session["test_recent_probs"] = probs
+            p_avg = float(sum(probs) / len(probs))
+            decision = classify_three_way(p_avg, *_gray_zone_band,
+                                          threshold=float(get_setting('liveness_threshold', '0.5')))
+    if decision in ("NO_FACE", "MULTI_FACE"):
+        session["test_recent_probs"] = []
+
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO test_mode_results (test_session, category, decision, p_spoof_frame, p_spoof_avg, admin_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (test_session, category, decision, p_frame, p_avg, session["user_id"]),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "decision": decision, "p_spoof_frame": p_frame, "p_spoof_avg": p_avg,
+                    "face_box": face_box, "test_session": test_session,
+                    "metrics": _test_mode_metrics(test_session)})
+
+
 @app.route("/admin/scan_log")
 def admin_scan_log():
     """Admin-only review of the most recent scan-pipeline events, in order,
@@ -800,6 +1085,7 @@ def admin_scan_log():
     rows = conn.execute('''
         SELECT scan_events.id, scan_events.session_id, scan_events.stage,
                scan_events.detail, scan_events.test_label, scan_events.created_at,
+               scan_events.p_spoof_frame, scan_events.p_spoof_avg, scan_events.iou,
                users.name AS user_name, users.employee_id
         FROM scan_events
         LEFT JOIN users ON scan_events.user_id = users.id
@@ -839,6 +1125,27 @@ def manage_employees():
 
     return render_template("employees.html", employees=employees, dept_stats=dept_stats,
                            departments=ALLOWED_DEPARTMENTS)
+
+
+@app.route("/admin/students/<int:user_id>/reset_face", methods=["POST"])
+def admin_reset_face(user_id):
+    """Clears one student's stored face samples so they can register again."""
+    if session.get("role") != "admin":
+        return redirect(url_for("admin_login"))
+    conn = get_db_connection()
+    student = conn.execute("SELECT name, employee_id FROM users WHERE id = ? AND role = 'employee'", (user_id,)).fetchone()
+    if student:
+        conn.execute("UPDATE users SET face_embedding = NULL, face_registered = 0 WHERE id = ?", (user_id,))
+        conn.commit()
+    conn.close()
+    if not student:
+        flash("Student not found.", "danger")
+        return redirect(url_for("manage_employees"))
+    from utils.face_utils import invalidate_cache
+    invalidate_cache()
+    _log_admin_action("RESET_FACE", f"user_id={user_id} employee_id={student['employee_id']}")
+    flash(f"Face samples cleared for {student['name']} ({student['employee_id']}). They can register again.", "success")
+    return redirect(url_for("manage_employees"))
 
 
 @app.route("/attendance_history")
@@ -1440,10 +1747,11 @@ def api_recognize_face():
         # recognition challenge) rather than silently continuing as if
         # nothing happened.
         prev_bbox = session.get('last_bbox')
+        frame_iou = _face_box_iou(prev_bbox, cur_bbox) if prev_bbox else None
         if _is_different_face(prev_bbox, cur_bbox):
             _log_scan_event("FACE_MOVED", dedup=False, update_dedup_key=False,
                              detail=f"prev={prev_bbox} cur={cur_bbox} iou={_face_box_iou(prev_bbox, cur_bbox):.3f}",
-                             test_label=test_label)
+                             test_label=test_label, iou=frame_iou)
             _reset_liveness_session()
         session['last_bbox'] = cur_bbox
 
@@ -1468,7 +1776,7 @@ def api_recognize_face():
         smoothed_prob_spoof = _smoothed_prob_spoof(raw_prob_spoof)
         liveness_threshold = float(get_setting('liveness_threshold', '0.5'))
         decision = classify_three_way(smoothed_prob_spoof, *_gray_zone_band, threshold=liveness_threshold)
-        frame_scores = {"p_spoof_frame": raw_prob_spoof, "p_spoof_avg": smoothed_prob_spoof}
+        frame_scores = {"p_spoof_frame": raw_prob_spoof, "p_spoof_avg": smoothed_prob_spoof, "iou": frame_iou}
 
         if decision != "LIVE":
             _log_liveness_event_if_changed(decision, smoothed_prob_spoof)

@@ -1783,3 +1783,45 @@ tbody tr:last-child td { border-bottom: none; }
     .filter-bar { flex-direction: column; }
     .spoof-panel { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* --- STATUS COLORS (meaning only) ---
+   green = LIVE, red = SPOOF, blue = UNCERTAIN, orange = no face / multiple faces */
+:root {
+    --state-live: #10b981;
+    --state-spoof: #f43f5e;
+    --state-uncertain: #38bdf8;
+    --state-noface: #f59e0b;
+}
+.state-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:700; letter-spacing:0.02em; border:1px solid currentColor; background:rgba(255,255,255,0.03); white-space:nowrap; }
+.state-LIVE { color: var(--state-live); }
+.state-SPOOF { color: var(--state-spoof); }
+.state-UNCERTAIN { color: var(--state-uncertain); }
+.state-NO_FACE, .state-MULTI_FACE { color: var(--state-noface); }
+
+/* Horizontal scroll for wide tables on small screens */
+.table-scroll { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.table-scroll table { min-width: 640px; }
+.num { font-family: monospace; font-size: 0.75rem; white-space: nowrap; }
+
+/* Empty / loading / error states */
+.empty-state, .error-state, .loading-state { text-align:center; padding:2rem 1rem; color:var(--text-muted); font-size:0.85rem; }
+.empty-state i, .error-state i, .loading-state i { display:block; font-size:1.6rem; margin-bottom:0.6rem; }
+.error-state { color: var(--accent-rose); }
+
+/* Filter row used by log pages */
+.filter-row { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+.filter-row label { display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:0.25rem; font-weight:600; }
+.filter-row .form-control { padding:0.5rem 0.7rem; font-size:0.8rem; min-width:140px; }
+
+/* Segmented toggle (login role) */
+.seg-toggle { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; }
+.seg-toggle input { position:absolute; opacity:0; pointer-events:none; }
+.seg-toggle label { text-align:center; padding:0.55rem; border-radius:9px; font-size:0.8rem; font-weight:700; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; }
+.seg-toggle input:checked + label { background:rgba(16,185,129,0.12); color:var(--accent-emerald); }
+.seg-toggle input:focus-visible + label { outline:2px solid var(--accent-emerald); }
+
+@media (max-width: 768px) {
+    .auth-card { width: 100%; max-width: 420px; padding: 1.75rem 1.25rem; }
+    .auth-wrapper { padding: 1rem; height: auto; min-height: 100vh; width: 100%; }
+    .filter-row > div, .filter-row .form-control { width: 100%; }
+}

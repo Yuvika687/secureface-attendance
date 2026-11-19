@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+{% block title %}Test Mode - SecureFace Attendance{% endblock %}
+{% block page_title %}Test Mode{% endblock %}
+{% block page_subtitle %}Show the camera a real face or an attack and count the liveness model's real decisions. Never marks attendance.{% endblock %}
+
+{% block content %}
+<style>
+.tm-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); gap:1rem; }
+.tm-video { position:relative; background:#000; border-radius:12px; overflow:hidden; }
+.tm-video video { width:100%; display:block; transform:scaleX(-1); }
+.tm-video canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.tm-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.4rem; margin-bottom:0.85rem; }
+.tm-cats input { position:absolute; opacity:0; pointer-events:none; }
+.tm-cats label { display:block; text-align:center; padding:0.55rem 0.4rem; border:1px solid var(--border); border-radius:10px; font-size:0.78rem; font-weight:700; color:var(--text-secondary); cursor:pointer; }
+.tm-cats input:checked + label { border-color:var(--accent-emerald); color:var(--accent-emerald); background:rgba(16,185,129,0.08); }
+.tm-cats small { display:block; font-weight:500; font-size:0.65rem; color:var(--text-muted); }
+.tm-decision { font-size:1.6rem; font-weight:800; min-height:2.2rem; }
+.tm-actions { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem; align-items:center; }
+.tm-status { font-size:0.78rem; color:var(--text-muted); margin-top:0.5rem; min-height:1.2em; }
+@media (max-width: 900px) { .tm-grid { grid-template-columns:1fr; } }
+</style>
+
+<div class="tm-grid">
+    <div class="glass-card">
+        <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-video"></i> Camera</span></div>
+        <div class="glass-card-body">
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.4rem; font-weight:600;">1. What are you showing the camera?</div>
+            <div class="tm-cats" role="radiogroup">
+                {% for key, (label, bona) in categories.items() %}
+                <input type="radio" name="tmCat" id="cat_{{ key }}" value="{{ key }}">
+                <label for="cat_{{ key }}">{{ label }}<small>{{ 'real person' if bona else 'attack' }}</small></label>
+                {% endfor %}
+            </div>
+            <div class="tm-video">
+                <video id="tmVideo" autoplay muted playsinline></video>
+                <canvas id="tmOverlay"></canvas>
+            </div>
+            <div class="tm-actions">
+                <button type="button" class="btn-primary" id="tmToggle" disabled><i class="fa-solid fa-play"></i> Start recording</button>
+                <button type="button" class="btn-sm" id="tmNewSession"><i class="fa-solid fa-rotate"></i> New test session</button>
+            </div>
+            <div class="tm-status" id="tmStatus">Choose a category, then press Start recording.</div>
+            <div style="margin-top:0.75rem; display:flex; align-items:baseline; gap:0.75rem; flex-wrap:wrap;">
+                <div class="tm-decision" id="tmDecision">—</div>
+                <div class="num" id="tmScores" style="color:var(--text-muted);"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <span class="glass-card-title"><i class="fa-solid fa-table"></i> Results</span>
+            <select id="tmSessionSel" class="form-control" style="max-width:260px; padding:0.4rem 0.6rem; font-size:0.75rem;">
+                <option value="{{ current_session }}" selected>This session ({{ current_session }})</option>
+                <option value="all">All sessions</option>
+                {% for s in sessions if s['test_session'] != current_session %}
+                <option value="{{ s['test_session'] }}">{{ s['started'] }} UTC · {{ s['n'] }} frames</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="glass-card-body">
+            <div id="tmTable"></div>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:0.75rem; line-height:1.5;">
+                One row per camera frame with exactly one face, using the scanner's own decision (average of the last 5 frames, same thresholds).
+                Real person: correct = LIVE, wrong = SPOOF. Attack: correct = SPOOF, wrong = LIVE.
+                UNCERTAIN means "retry" and is counted separately.
+                APCER = attack frames judged LIVE. BPCER = real-person frames judged SPOOF.
+                HTER for an attack category = (its APCER + overall BPCER) / 2.
+                Frames with no face or several faces are recorded but not counted.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+(function () {
+    const COLORS = { LIVE: '#10b981', SPOOF: '#f43f5e', UNCERTAIN: '#38bdf8', NO_FACE: '#f59e0b', MULTI_FACE: '#f59e0b' };
+    const LABELS = { NO_FACE: 'NO FACE', MULTI_FACE: 'MULTIPLE FACES' };
+    let running = false, busy = false, viewSession = {{ current_session|tojson }};
+    const toggleBtn = document.getElementById('tmToggle');
+    const statusEl = document.getElementById('tmStatus');
+    const overlay = document.getElementById('tmOverlay');
+    const video = document.getElementById('tmVideo');
+
+    const pct = x => (x === null || x === undefined) ? '—' : (x * 100).toFixed(2) + '%';
+    const category = () => (document.querySelector('input[name="tmCat"]:checked') || {}).value;
+
+    function renderTable(m) {
+        const el = document.getElementById('tmTable');
+        if (!m || !m.total) {
+            el.innerHTML = '<div class="empty-state"><i class="fa-solid fa-flask"></i>No frames recorded in this view yet.</div>';
+            return;
+        }
+        let html = '<div class="table-scroll"><table><thead><tr><th>Shown</th><th>Frames</th><th>Correct</th><th>Wrong</th><th>Uncertain</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead><tbody>';
+        m.rows.forEach(r => {
+            if (!r.n) return;
+            html += `<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.correct}</td><td class="num">${r.wrong}</td><td class="num">${r.UNCERTAIN}</td>` +
+                    `<td class="num">${pct(r.apcer)}</td><td class="num">${pct(r.bpcer)}</td><td class="num">${pct(r.hter)}</td></tr>`;
+        });
+        html += `<tr style="font-weight:700;"><td>Overall</td><td class="num">${m.total}</td><td></td><td></td><td class="num">${m.overall.uncertain_bona + m.overall.uncertain_attack}</td>` +
+                `<td class="num">${pct(m.overall.apcer)}</td><td class="num">${pct(m.overall.bpcer)}</td><td class="num">${pct(m.overall.hter)}</td></tr>`;
+        el.innerHTML = html + '</tbody></table></div>';
+    }
+
+    function drawBox(res) {
+        const rect = overlay.getBoundingClientRect();
+        overlay.width = rect.width; overlay.height = rect.height;
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        const b = res && res.face_box;
+        if (!b) return;
+        const sx = overlay.width / b.frame_width, sy = overlay.height / b.frame_height;
+        const x = overlay.width - (b.x + b.width) * sx, y = b.y * sy;
+        const color = COLORS[res.decision] || '#f59e0b';
+        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x, y, b.width * sx, b.height * sy);
+        ctx.font = '700 13px Inter, sans-serif';
+        const label = LABELS[res.decision] || res.decision;
+        ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - 20), ctx.measureText(label).width + 10, 20);
+        ctx.fillStyle = '#000'; ctx.fillText(label, x + 5, Math.max(14, y - 6));
+    }
+
+    async function loadMetrics(sess) {
+        const el = document.getElementById('tmTable');
+        el.innerHTML = '<div class="loading-state"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading…</div>';
+        try {
+            const r = await fetch("{{ url_for('api_admin_test_metrics') }}?session=" + encodeURIComponent(sess));
+            const res = await r.json();
+            if (!r.ok || !res.success) throw new Error(res.msg || r.status);
+            renderTable(res.metrics);
+        } catch (e) {
+            el.innerHTML = `<div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i>Could not load results: ${e.message}</div>`;
+        }
+    }
+
+    async function loop() {
+        if (!running) return;
+        if (!busy) {
+            busy = true;
+            try {
+                const image = captureFrame('tmVideo');
+                if (image) {
+                    const r = await fetch("{{ url_for('api_admin_test_scan') }}", {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image, category: category() })
+                    });
+                    const res = await r.json();
+                    if (!r.ok || !res.success) throw new Error(res.msg || ('HTTP ' + r.status));
+                    const d = document.getElementById('tmDecision');
+                    d.textContent = LABELS[res.decision] || res.decision;
+                    d.style.color = COLORS[res.decision] || '';
+                    document.getElementById('tmScores').textContent = res.p_spoof_avg !== null
+                        ? `frame ${res.p_spoof_frame.toPrecision(3)} · avg ${res.p_spoof_avg.toPrecision(3)}` : '';
+                    drawBox(res);
+                    if (viewSession === res.test_session) renderTable(res.metrics);
+                    statusEl.textContent = 'Recording… nothing here marks attendance.';
+                }
+            } catch (e) {
+                statusEl.textContent = 'Error: ' + e.message;
+            }
+            busy = false;
+        }
+        setTimeout(loop, 300);
+    }
+
+    document.querySelectorAll('input[name="tmCat"]').forEach(r => r.addEventListener('change', () => {
+        toggleBtn.disabled = false;
+        statusEl.textContent = running ? 'Category changed. Recording continues.' : 'Press Start recording.';
+    }));
+
+    toggleBtn.addEventListener('click', () => {
+        if (running) {
+            running = false; stopCamera();
+            toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start recording';
+            statusEl.textContent = 'Stopped.';
+            drawBox(null);
+            return;
+        }
+        if (!category()) { statusEl.textContent = 'Choose what you are showing the camera first.'; return; }
+        statusEl.textContent = 'Starting camera…';
+        startCamera('tmVideo');
+        running = true;
+        toggleBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
+        video.addEventListener('loadeddata', () => loop(), { once: true });
+    });
+
+    document.getElementById('tmNewSession').addEventListener('click', async () => {
+        try {
+            const r = await fetch("{{ url_for('api_admin_test_new_session') }}", { method: 'POST' });
+            const res = await r.json();
+            if (!r.ok || !res.success) throw new Error(res.msg || r.status);
+            const sel = document.getElementById('tmSessionSel');
+            const opt = document.createElement('option');
+            opt.value = res.test_session; opt.textContent = `This session (${res.test_session})`;
+            sel.prepend(opt); sel.value = res.test_session; viewSession = res.test_session;
+            renderTable(res.metrics);
+            statusEl.textContent = 'New test session started.';
+        } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
+    });
+
+    document.getElementById('tmSessionSel').addEventListener('change', e => {
+        viewSession = e.target.value;
+        loadMetrics(viewSession);
+    });
+
+    renderTable({{ metrics|tojson }});
+})();
+</script>
+{% endblock %}

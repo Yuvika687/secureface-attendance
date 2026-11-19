@@ -203,6 +203,20 @@ def _init_sqlite():
         test_label TEXT,
         p_spoof_frame REAL,
         p_spoof_avg REAL,
+        iou REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Admin Test Mode: one row per camera frame, labeled with what was shown
+    -- to the camera. Never linked to attendance.
+    CREATE TABLE IF NOT EXISTS test_mode_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_session TEXT NOT NULL,
+        category TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK(decision IN ('LIVE', 'SPOOF', 'UNCERTAIN', 'NO_FACE', 'MULTI_FACE')),
+        p_spoof_frame REAL,
+        p_spoof_avg REAL,
+        admin_user_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 

@@ -42,14 +42,14 @@
 {% endif %}
 
 <!-- Stats Row -->
-<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:1.25rem;">
+<div class="stats-grid" style="margin-bottom:1.25rem;">
     <div class="stat-card">
         <div class="stat-card-header">
             <div class="stat-icon emerald"><i class="fa-solid fa-calendar-check"></i></div>
-            <span class="stat-title">Days Present</span>
+            <span class="stat-title">Present</span>
         </div>
         <div class="stat-value">{{ days_present_total }}</div>
-        <div class="stat-trend"><span class="trend-badge neutral">{{ late_days }}</span> of which Late</div>
+        <div class="stat-trend">Present: {{ days_present_total }}, of which Late: {{ late_days }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-card-header">

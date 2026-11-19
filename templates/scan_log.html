@@ -13,12 +13,22 @@
     once per frame.
 </p>
 
+<p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem;">
+    Frame score = this frame's P(spoof). Average = the 5-frame average the decision used.
+    IoU = overlap of this frame's face box with the previous frame's (below 0.25 counts as a different face).
+    Times are UTC.
+</p>
+
 <div class="table-panel">
+    <div class="table-scroll">
     <table>
         <thead>
             <tr>
                 <th>Time</th>
                 <th>Stage</th>
+                <th>Frame score</th>
+                <th>Average</th>
+                <th>IoU</th>
                 <th>Test Label</th>
                 <th>Session</th>
                 <th>User</th>
@@ -29,7 +39,10 @@
             {% for row in rows %}
             <tr>
                 <td style="white-space:nowrap;">{{ row['created_at'] }}</td>
-                <td style="font-weight:700;">{{ row['stage'] }}</td>
+                <td><span class="state-badge state-{{ row['stage'] }}">{{ row['stage'] }}</span></td>
+                <td class="num">{{ '%.4g'|format(row['p_spoof_frame']) if row['p_spoof_frame'] is not none else '—' }}</td>
+                <td class="num">{{ '%.4g'|format(row['p_spoof_avg']) if row['p_spoof_avg'] is not none else '—' }}</td>
+                <td class="num">{{ '%.3f'|format(row['iou']) if row['iou'] is not none else '—' }}</td>
                 <td style="color:#f59e0b; font-size:0.75rem;">{{ row['test_label'] or '' }}</td>
                 <td style="font-family:monospace; font-size:0.72rem;">{{ row['session_id'][:8] }}</td>
                 <td>{% if row['user_name'] %}{{ row['user_name'] }} ({{ row['employee_id'] }}){% endif %}</td>
@@ -37,9 +50,10 @@
             </tr>
             {% endfor %}
             {% if not rows %}
-            <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No scan events logged yet.</td></tr>
+            <tr><td colspan="9"><div class="empty-state"><i class="fa-regular fa-folder-open"></i>No scan events logged yet.</div></td></tr>
             {% endif %}
         </tbody>
     </table>
+    </div>
 </div>
 {% endblock %}
