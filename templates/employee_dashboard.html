@@ -12,7 +12,7 @@
             <i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem; color:var(--accent-gold);"></i>
             <div style="font-size:1rem; font-weight:700; color:var(--text-primary);">Register your face to start marking attendance</div>
         </div>
-        <button type="button" onclick="document.getElementById('faceModal').style.display='flex'" style="padding:0.6rem 1.2rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; font-family:inherit;">
+        <button type="button" onclick="openEnrollment()" style="padding:0.6rem 1.2rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; font-family:inherit;">
             <i class="fa-solid fa-camera"></i> Register Face
         </button>
     </div>
@@ -20,11 +20,11 @@
 {% endif %}
 <!-- Today's Status -->
 {% if today_status %}
-<div class="today-status-card {% if today_status.status == 'Late' %}late-check{% else %}checked-in{% endif %}">
+<div class="today-status-card {% if today_status.status == 'Late' %}late-check{% elif today_status.status == 'Present' %}checked-in{% else %}not-checked{% endif %}">
     <div style="display:flex; align-items:center; justify-content:center; gap:1rem;">
         <i class="fa-solid fa-{% if today_status.status == 'Late' %}clock{% else %}circle-check{% endif %}" style="font-size:1.8rem; color:{% if today_status.status == 'Late' %}var(--accent-gold){% else %}var(--accent-emerald){% endif %};"></i>
         <div style="text-align:left;">
-            <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Checked in at {{ today_status.time[:5] }}</div>
+            <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">{% if today_status.status in ('Present', 'Late') %}Checked in at {{ today_status.time[:5] }}{% else %}{{ today_status.status }} today{% endif %}</div>
             <div style="font-size:0.78rem; color:var(--text-secondary);">Status: <span style="color:{% if today_status.status == 'Late' %}var(--accent-gold){% else %}var(--accent-emerald){% endif %}; font-weight:700;">{{ today_status.status }}</span></div>
         </div>
     </div>
@@ -35,7 +35,7 @@
         <i class="fa-solid fa-triangle-exclamation" style="font-size:1.8rem; color:var(--accent-gold);"></i>
         <div style="text-align:left;">
             <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Not Checked In Yet</div>
-            <div style="font-size:0.78rem; color:var(--text-secondary);">Attendance is marked at the common face scanner</div>
+            <div style="font-size:0.78rem; color:var(--text-secondary);"><a href="{{ url_for('home') }}">Open the attendance scanner &rarr;</a></div>
         </div>
     </div>
 </div>
@@ -89,9 +89,14 @@
     <!-- Calendar Heatmap + Chart -->
     <div class="glass-card">
         <div class="glass-card-header">
-            <span class="glass-card-title"><i class="fa-solid fa-calendar-days"></i> This Month's Attendance</span>
+            <span class="glass-card-title"><i class="fa-solid fa-calendar-days"></i> {{ selected_month.strftime('%B %Y') }}</span>
         </div>
         <div class="glass-card-body">
+            <form method="get" class="calendar-picker">
+                <label for="month">Attendance month</label>
+                <input type="month" id="month" name="month" value="{{ selected_month.isoformat()[:7] }}" max="{{ current_month }}" required>
+                <button type="submit">View</button>
+            </form>
             <div class="calendar-grid" id="calendarGrid">
                 <div class="calendar-header">Mon</div>
                 <div class="calendar-header">Tue</div>
@@ -100,6 +105,14 @@
                 <div class="calendar-header">Fri</div>
                 <div class="calendar-header">Sat</div>
                 <div class="calendar-header">Sun</div>
+                {% for _ in range(selected_month.weekday()) %}<div class="calendar-day empty" aria-hidden="true"></div>{% endfor %}
+                {% for day in range(1, days_in_month + 1) %}
+                {% set key = selected_month.replace(day=day).isoformat() %}
+                {% set status = calendar_data.get(key) %}
+                <time datetime="{{ key }}" title="{{ key }} · {{ status or 'No record' }}"
+                      aria-label="{{ key }}, {{ status or 'No record' }}"
+                      class="calendar-day {{ status|lower if status else 'no-data' }}{{ ' today' if key == today }}">{{ day }}</time>
+                {% endfor %}
             </div>
             <div style="margin-top:1rem; display:flex; gap:1rem; justify-content:center; flex-wrap: wrap;">
                 <div style="display:flex; align-items:center; gap:0.3rem; font-size:0.65rem; color:var(--text-muted);"><span style="width:10px; height:10px; border-radius:3px; background:rgba(16,185,129,0.3);"></span> Present</div>
@@ -146,7 +159,7 @@
                 </div>
 
                 {% if not user['face_registered'] %}
-                <button onclick="document.getElementById('faceModal').style.display='flex'" style="margin-top:0.85rem; width:100%; padding:0.65rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s; box-shadow:0 4px 15px rgba(16,185,129,0.2);">
+                <button onclick="openEnrollment()" style="margin-top:0.85rem; width:100%; padding:0.65rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s; box-shadow:0 4px 15px rgba(16,185,129,0.2);">
                     <i class="fa-solid fa-camera"></i> Register Biometrics
                 </button>
                 {% endif %}
@@ -158,11 +171,13 @@
             <div class="glass-card-header">
                 <span class="glass-card-title"><i class="fa-solid fa-chart-pie"></i> Distribution</span>
             </div>
-            <div class="glass-card-body" style="height:180px; display:flex; align-items:center; justify-content:center; position:relative;">
-                <canvas id="attendanceChart"></canvas>
-                {% if chart_data.Present == 0 and chart_data.Late == 0 and chart_data.Absent == 0 and chart_data.Leave == 0 %}
-                <div style="position:absolute; color:var(--text-muted); font-size:0.82rem;">No data yet</div>
-                {% endif %}
+            <div class="glass-card-body distribution">
+                {% set total = chart_data.values()|sum %}
+                {% if total %}
+                {% for label, count in chart_data.items() %}
+                <div><span>{{ label }}</span><meter aria-label="{{ label }} days" min="0" max="{{ total }}" value="{{ count }}"></meter><strong>{{ count }}</strong></div>
+                {% endfor %}
+                {% else %}<p>No attendance recorded yet.</p>{% endif %}
             </div>
         </div>
     </div>
@@ -203,197 +218,106 @@
     </div>
 </div>
 
-<!-- Face Registration Modal -->
-<div id="faceModal" style="position:fixed; inset:0; background:rgba(6,9,17,0.92); backdrop-filter:blur(20px); z-index:100; display:none; align-items:center; justify-content:center;">
-    <div style="background:var(--bg-sidebar); border:1px solid var(--border); padding:2rem; border-radius:20px; width:100%; max-width:560px;">
-        <h2 style="font-size:1.4rem; font-weight:800; color:var(--text-primary); margin-bottom:0.4rem;">Facial Registration</h2>
-        <p style="color:var(--text-muted); margin-bottom:1.25rem; font-size:0.82rem;">Look directly at the camera. We'll capture multiple samples for accuracy.</p>
-        
-        <div style="position:relative; width:100%; aspect-ratio:16/10; border-radius:16px; overflow:hidden; border:2px solid rgba(16,185,129,0.15); background:#000;">
-            <video id="videoElement" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
-            
-            <!-- Target ring removed for better UX -->
-            <div id="processingOverlay" style="position:absolute; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(5px); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:20;">
-                <i class="fa-solid fa-circle-notch fa-spin" style="font-size:2rem; color:var(--accent-cyan); margin-bottom:0.75rem;"></i>
-                <p id="regProgressText" style="color:#fff; font-weight:700; font-size:0.82rem;">Processing...</p>
-            </div>
-            
-            <div id="regSuccessOverlay" style="position:absolute; inset:0; background:rgba(16,185,129,0.9); backdrop-filter:blur(8px); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:30;">
-                <i class="fa-solid fa-check" style="font-size:2.5rem; color:#fff; margin-bottom:0.75rem;"></i>
-                <p style="color:#fff; font-weight:700; font-size:1.1rem;">Identity Locked</p>
-            </div>
-
-            <!-- Sample counter -->
-            <div id="sampleCounter" style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); backdrop-filter:blur(10px); padding:4px 12px; border-radius:20px; font-size:0.72rem; font-weight:600; color:var(--accent-cyan); z-index:15;">Sample 0/{{ min_face_samples }}</div>
-        </div>
-
-        <p id="regInstruction" style="color:var(--accent-cyan); font-weight:600; font-size:0.82rem; margin-top:1rem; display:flex; align-items:center; justify-content:center; gap:0.5rem;">
-            <i class="fa-solid fa-camera" style="animation:pulse-glow 1.5s infinite;"></i> Auto-capture active. Hold still.
-        </p>
-        
-        <button type="button" onclick="closeModal()" style="margin-top:1rem; background:rgba(255,255,255,0.04); border:1px solid var(--border); color:var(--text-secondary); padding:0.5rem 1.5rem; border-radius:10px; cursor:pointer; font-weight:600; font-size:0.8rem; font-family:inherit;">Cancel</button>
+<dialog id="faceModal" aria-labelledby="enrollTitle" class="enrollment-dialog">
+    <h2 id="enrollTitle">Register your face</h2>
+    <p>Look directly at the camera in even light.</p>
+    <div class="enrollment-preview">
+        <video id="videoElement" autoplay muted playsinline></video>
     </div>
-</div>
-
+    <label for="sampleProgress" id="sampleCounter">Saved samples</label>
+    <progress id="sampleProgress" max="{{ min_face_samples }}" value="0"></progress>
+    <p id="regInstruction" role="status" aria-live="polite"></p>
+    <div class="enrollment-actions">
+        <button type="button" onclick="closeEnrollment()">Close</button>
+        <a hidden id="goToScanner" class="btn-primary" href="{{ url_for('home') }}">Open scanner &rarr;</a>
+    </div>
+</dialog>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Calendar Heatmap
-    document.addEventListener("DOMContentLoaded", () => {
-        const calendarData = {{ calendar_data | tojson | safe }};
-        const grid = document.getElementById('calendarGrid');
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
-        
-        // Adjust for Monday start (0=Mon, 6=Sun)
-        let startDay = firstDay.getDay() - 1;
-        if (startDay < 0) startDay = 6;
-        
-        // Empty cells
-        for (let i = 0; i < startDay; i++) {
-            const cell = document.createElement('div');
-            cell.className = 'calendar-day empty';
-            grid.appendChild(cell);
-        }
-        
-        // Day cells
-        for (let d = 1; d <= lastDay.getDate(); d++) {
-            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            const cell = document.createElement('div');
-            cell.textContent = d;
-            
-            const status = calendarData[dateStr];
-            if (status === 'Present') cell.className = 'calendar-day present';
-            else if (status === 'Late') cell.className = 'calendar-day late';
-            else if (status === 'Absent') cell.className = 'calendar-day absent';
-            else if (status === 'Leave') cell.className = 'calendar-day leave';
-            else cell.className = 'calendar-day no-data';
-            
-            if (d === now.getDate()) cell.classList.add('today');
-            
-            grid.appendChild(cell);
-        }
+    const faceModal = document.getElementById('faceModal');
+    const instruction = document.getElementById('regInstruction');
+    const progress = document.getElementById('sampleProgress');
+    const counter = document.getElementById('sampleCounter');
+    const scannerLink = document.getElementById('goToScanner');
+    const enrollmentVideo = document.getElementById('videoElement');
+    let captureSession = 0;
+    let captureTimer;
+    let complete = false;
 
-        // Chart
-        const ctx = document.getElementById('attendanceChart');
-        if (ctx) {
-            const chartData = {{ chart_data | tojson | safe }};
-            new Chart(ctx.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['Present', 'Late', 'Absent', 'Leave'],
-                    datasets: [{
-                        data: [chartData.Present, chartData.Late, chartData.Absent, chartData.Leave],
-                        backgroundColor: ['rgba(16,185,129,0.8)', 'rgba(245,158,11,0.8)', 'rgba(244,63,94,0.8)', 'rgba(139,92,246,0.8)'],
-                        borderColor: ['rgba(16,185,129,1)', 'rgba(245,158,11,1)', 'rgba(244,63,94,1)', 'rgba(139,92,246,1)'],
-                        borderWidth: 1,
-                        hoverOffset: 8
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '72%',
-                    plugins: {
-                        legend: { position: 'right', labels: { color: '#8b949e', font: { family: 'Inter', size: 11 }, padding: 12 } }
-                    }
-                }
-            });
-        }
+    function closeEnrollment() { faceModal.close(); }
+    faceModal.addEventListener('close', () => {
+        captureSession++;
+        clearTimeout(captureTimer);
+        stopCamera();
+        enrollmentVideo.srcObject = null;
+        if (complete) location.reload();
     });
 
-    // Face Registration Logic
-    let streamActive = false;
-    let autoCaptureInterval = null;
-    let sampleCount = 0;
-    const MAX_SAMPLES = {{ min_face_samples }};  // real admin-configured setting, not hardcoded
-    
-    function closeModal() {
-        document.getElementById('faceModal').style.display = 'none';
-        if (autoCaptureInterval) clearInterval(autoCaptureInterval);
-        stopCamera();
-        streamActive = false;
-        sampleCount = 0;
+    async function openEnrollment() {
+        if (faceModal.open) return;
+        faceModal.showModal();
+        const sessionId = ++captureSession;
+        complete = false;
+        scannerLink.hidden = true;
+        counter.textContent = 'Saved samples';
+        progress.removeAttribute('value');
+        instruction.textContent = 'Opening camera…';
+        await startCamera('videoElement', false);
+        if (sessionId !== captureSession || !faceModal.open) return;
+        if (!enrollmentVideo.srcObject?.active) {
+            instruction.textContent = 'Camera unavailable. Allow camera access in your browser to enroll.';
+            return;
+        }
+        instruction.textContent = 'Hold still for the first sample.';
+        captureSample(sessionId);
     }
 
-    const modalObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.target.style.display === 'flex' && !streamActive) {
-                startCamera('videoElement');
-                streamActive = true;
-                sampleCount = 0;
-                startMultiSampleCapture();
-            }
-        });
-    });
-    
-    const faceModal = document.getElementById('faceModal');
-    if (faceModal) modalObserver.observe(faceModal, { attributes: true, attributeFilter: ['style'] });
-
-    async function captureSample() {
-        const base64Img = captureFrame("videoElement");
-        const instruction = document.getElementById("regInstruction");
-        const counter = document.getElementById("sampleCounter");
-        const processingOverlay = document.getElementById("processingOverlay");
-        const progressText = document.getElementById("regProgressText");
-        
-        // Removed processing overlay to avoid annoyance
-        // processingOverlay.style.display = 'flex';
-        progressText.innerText = `Capturing sample ${sampleCount + 1}/${MAX_SAMPLES}...`;
-        
+    async function captureSample(sessionId) {
+        const image = captureFrame('videoElement');
+        if (!image) {
+            instruction.textContent = 'Camera disconnected. Close enrollment and check your camera.';
+            stopCamera();
+            return;
+        }
         try {
             const response = await fetch("{{ url_for('api_register_face') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: base64Img })
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({image}), signal: AbortSignal.timeout(15000)
             });
             const result = await response.json();
-            
-            // processingOverlay.style.display = 'none';
-            
+            if (sessionId !== captureSession || !faceModal.open) return;
             if (result.success) {
-                sampleCount++;
-                counter.innerText = `Sample ${sampleCount}/${MAX_SAMPLES}`;
-                instruction.innerHTML = `<i class="fa-solid fa-check" style="color:var(--accent-emerald);"></i> Sample ${sampleCount} captured! ${sampleCount < MAX_SAMPLES ? 'Slightly move your head...' : 'Complete!'}`;
-                instruction.style.color = 'var(--accent-emerald)';
-                
-                if (sampleCount >= MAX_SAMPLES) {
-                    document.getElementById("regSuccessOverlay").style.display = 'flex';
-                    instruction.innerText = "Model Trained Successfully!";
-                    setTimeout(() => window.location.reload(), 2000);
-                    return true;
+                progress.max = result.required;
+                progress.value = Math.min(result.saved, result.required);
+                counter.textContent = progress.value + ' of ' + result.required + ' samples saved';
+                if (result.complete) {
+                    complete = true;
+                    stopCamera();
+                    enrollmentVideo.srcObject = null;
+                    instruction.textContent = 'Face registered. You can now check in.';
+                    scannerLink.hidden = false;
+                    return;
                 }
-            } else if (result.identity_rejected) {
-                instruction.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + result.msg;
-                instruction.style.color = 'var(--accent-rose)';
+                instruction.textContent = 'Sample saved. Turn your head slightly for the next one.';
             } else {
-                instruction.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> No face detected. Adjust position...';
-                instruction.style.color = 'var(--accent-gold)';
+                instruction.textContent = result.msg || 'The sample could not be saved.';
+                if (response.status !== 400 || result.identity_rejected) {
+                    stopCamera();
+                    return;
+                }
             }
-        } catch (err) {
-            // processingOverlay.style.display = 'none';
-            instruction.innerText = "Network error. Retrying...";
-            instruction.style.color = 'var(--accent-rose)';
+        } catch {
+            if (sessionId !== captureSession || !faceModal.open) return;
+            instruction.textContent = 'The server did not confirm this sample. Close enrollment and check the connection.';
+            stopCamera();
+            return;
         }
-        return false;
+        captureTimer = setTimeout(() => captureSample(sessionId), 1000);
     }
 
-    function startMultiSampleCapture() {
-        const counter = document.getElementById("sampleCounter");
-        counter.innerText = `Sample 0/${MAX_SAMPLES}`;
-        
-        setTimeout(() => {
-            autoCaptureInterval = setInterval(async () => {
-                const done = await captureSample();
-                if (done) {
-                    clearInterval(autoCaptureInterval);
-                    autoCaptureInterval = null;
-                }
-            }, 2500);
-        }, 2000);
+    if (location.hash === '#register-face') {
+        history.replaceState(null, '', location.pathname + location.search);
+        openEnrollment();
     }
 </script>
 {% endblock %}

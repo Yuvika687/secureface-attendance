@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>How It Works - SecureFace Attendance</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fx.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <style>
         body { background: var(--bg-dark); color: var(--text-primary); }
@@ -91,5 +92,6 @@
     <h2>Masks</h2>
     <div class="card mask-note"><i class="fa-solid fa-head-side-mask"></i><div>Liveness detection works with masks. Face recognition requires the mask to be removed.</div></div>
 </div>
+<script src="{{ url_for('static', filename='js/fx.js') }}" defer></script>
 </body>
 </html>

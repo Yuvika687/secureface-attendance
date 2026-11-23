@@ -16,7 +16,11 @@ WEIGHTS_DIR = os.path.join(LIVENESS_DIR, "weights")
 MODELS_DIR = WEIGHTS_DIR  # face_utils.py expects a MODELS_DIR to cache the downloaded .tflite detector into
 
 BEST_MODEL_PATH = os.path.join(WEIGHTS_DIR, "best_liveness.pth")
-GRAY_ZONE_PATH = os.path.join(WEIGHTS_DIR, "gray_zone_v2.json")
+GRAY_ZONE_V2_PATH = os.path.join(WEIGHTS_DIR, "gray_zone_v2.json")
+# Webcam recalibration (scripts/calibrate_webcam.py, docs/domain_adaptation_plan.md Step 1).
+# Used only when it exists; delete it to go back to v2.
+GRAY_ZONE_V3_PATH = os.path.join(WEIGHTS_DIR, "gray_zone_v3.json")
+GRAY_ZONE_PATH = GRAY_ZONE_V3_PATH if os.path.isfile(GRAY_ZONE_V3_PATH) else GRAY_ZONE_V2_PATH
 
 IMAGE_SIZE = 224
 BACKBONE = "mobilenet_v3_small"

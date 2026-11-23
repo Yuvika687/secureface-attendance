@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@font-face {
+    font-family: Inter;
+    src: url('../vendor/inter/inter-latin-wght-normal.woff2') format('woff2');
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
 
 :root {
     --bg-dark: #060911;
@@ -1825,3 +1831,58 @@ tbody tr:last-child td { border-bottom: none; }
     .auth-wrapper { padding: 1rem; height: auto; min-height: 100vh; width: 100%; }
     .filter-row > div, .filter-row .form-control { width: 100%; }
 }
+
+:root { --text-muted:#99a8ba; }
+body {background-color:#0b1520;background-image:radial-gradient(ellipse at 8% 5%,#12403788,transparent 55%),radial-gradient(ellipse at 90% 80%,#23375a70,transparent 50%);background-attachment:fixed}
+.auth-card,.stat-card,.topbar,.sidebar {background:linear-gradient(135deg,rgba(25,49,55,.93),rgba(16,27,44,.90));backdrop-filter:blur(18px);border-color:rgba(165,216,211,.18)}
+.auth-card,.stat-card {box-shadow:0 16px 42px rgba(1,9,20,.26),inset 0 1px rgba(218,255,248,.09)}
+:focus-visible { outline:3px solid #78dfc4; outline-offset:3px; }
+.auth-wrapper { background:radial-gradient(ellipse at 30% 10%, #173930, transparent 52%), #09121b; }
+.auth-card { border-top:3px solid #bba7ef; }
+:root {--bg-dark:#131218;--bg-sidebar:#1c1923;--text-primary:#f5f1fa;--border:#ffffff17;--border-hover:#b8a5d952}
+body,.auth-wrapper {background:radial-gradient(ellipse at 75% 12%,#30273e 0,transparent 55%),#131218}
+.auth-wrapper::before,.auth-wrapper::after {opacity:.16}
+.auth-card,.stat-card,.glass-card,.sidebar,.topbar {background:linear-gradient(135deg,#292531ed,#201e28f7);border-color:#ffffff19;box-shadow:0 14px 45px #0908102b}
+.auth-card,.glass-card,.stat-card {border-radius:19px}
+.sidebar-logo .logo-icon,.btn-primary {background:#c7b9f4;color:#201a2d}
+.btn-primary:hover {background:#dbcfff;color:#241d32}
+.nav-links a.active,.nav-links a:hover {color:#e2d6ff;background:#8871aa26}
+.form-control:focus {border-color:#bca4ef;box-shadow:0 0 0 3px #bca4ef24}
+.glass-card:hover,.stat-card:hover {border-color:#b7a1cd52}
+.page-content {animation:workspace-enter .32s ease-out}
+@keyframes workspace-enter {from{opacity:.4;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; }
+}
+
+.calendar-picker, .enrollment-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.calendar-picker { margin-bottom: 1rem; color: var(--text-secondary); font-size: .8rem; }
+.calendar-picker input, .calendar-picker button, .enrollment-actions button {
+    color: var(--text-primary); background: #302c39; border: 1px solid #5f586c;
+    border-radius: 8px; padding: .45rem .7rem; font: inherit; color-scheme: dark;
+}
+.calendar-picker button, .enrollment-actions button { cursor: pointer; }
+.distribution > div { display: grid; grid-template-columns: 5em 1fr 2em; align-items: center; gap: 12px; margin-block: .5rem; }
+.distribution meter { width: 100%; accent-color: #c7b9f4; }
+.distribution strong { text-align: end; }
+.enrollment-dialog {
+    width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; overflow-y: auto;
+    background: #25222e; color: var(--text-primary); border: 1px solid #726a82; border-radius: 22px; padding: 24px;
+}
+.enrollment-dialog[open] { animation: workspace-enter .22s ease-out; }
+.enrollment-dialog::backdrop { background: #101019bb; backdrop-filter: blur(8px); }
+.enrollment-dialog h2 { margin: 0; font-size: 1.5rem; }
+.enrollment-dialog p { font-size: .9rem; color: var(--text-secondary); margin: .6rem 0 1rem; }
+.enrollment-preview { margin: 1rem auto; width: min(55%, 180px); aspect-ratio: 16/19; overflow: hidden; border: 1px solid #9386a7; border-radius: 16px; background: #19171f; }
+.enrollment-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.enrollment-dialog label { font-size: .85rem; }
+.enrollment-dialog progress { width: 100%; accent-color: #c7b9f4; height: 7px; }
+.enrollment-actions { justify-content: space-between; }
+.enrollment-actions [hidden], .sidebar-scrim[hidden], .sidebar-dismiss { display: none; }
+@media (max-width: 768px) {
+    .sidebar.open { overflow-y: auto; height: 100dvh; animation: menu-slide .19s ease-out; }
+    .sidebar-dismiss { display: block; position: absolute; right: 5px; top: 5px; font-size: 21px; line-height: 1; padding: 6px; color: #eee8f7; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+    .sidebar-scrim { position: fixed; inset: 0; z-index: 99; border: 0; background: #11101a99; }
+    .main-wrapper { min-width: 0; }
+}
+@keyframes menu-slide { from { transform: translateX(-32px); opacity: .4; } to { transform: none; opacity: 1; } }

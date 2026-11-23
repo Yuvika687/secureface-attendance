@@ -1,61 +1,36 @@
-/**
- * SmartFace AI — Camera Module v2.0
- * ==================================
- * HD webcam capture optimized for face recognition at scale (500+ employees).
- * - Requests 1280×720 HD resolution from webcam
- * - Higher JPEG quality (0.85) for better LBPH matching accuracy
- * - 640px max width for optimal detail-to-speed balance
- * - Adaptive resolution fallback for older/low-end cameras
- */
+let cameraRequest = 0;
 
-function startCamera(videoElementId) {
+async function startCamera(videoElementId, showAlert = true) {
+    stopCamera();
+    const requestId = cameraRequest;
     const video = document.getElementById(videoElementId);
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        // Request HD resolution for maximum face detail
-        const constraints = {
-            video: {
-                facingMode: "user",
-                width: { ideal: 1280, min: 640 },
-                height: { ideal: 720, min: 480 },
-                frameRate: { ideal: 30, max: 30 }
-            }
-        };
-
-        navigator.mediaDevices.getUserMedia(constraints)
-            .then(function(stream) {
-                video.srcObject = stream;
-                video.play();
-                window.localStream = stream;
-
-                // Log actual resolution achieved
-                video.addEventListener('loadedmetadata', () => {
-                    console.log(`[Camera] Resolution: ${video.videoWidth}×${video.videoHeight}`);
-                });
-            })
-            .catch(function(err) {
-                console.warn("[Camera] HD request failed, trying basic:", err);
-                // Fallback to basic constraints
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-                    .then(function(stream) {
-                        video.srcObject = stream;
-                        video.play();
-                        window.localStream = stream;
-                    })
-                    .catch(function(err2) {
-                        console.error("[Camera] All attempts failed:", err2);
-                        alert("Cannot access the camera. Please check permissions.");
-                    });
-            });
-    } else {
-        alert("Camera not supported on this browser.");
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({video: {
+            facingMode: "user", width: {ideal: 1280}, height: {ideal: 720}
+        }});
+        if (cameraRequest !== requestId) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
+        video.srcObject = stream;
+        window.localStream = stream;
+        await video.play();
+    } catch (error) {
+        if (cameraRequest === requestId) {
+            stopCamera();
+            if (showAlert) alert("Camera unavailable. Allow camera access and open this page on localhost or HTTPS.");
+        }
     }
 }
 
 function stopCamera() {
-    if (window.localStream) {
-        window.localStream.getTracks().forEach(track => track.stop());
-    }
+    cameraRequest++;
+    if (window.localStream) window.localStream.getTracks().forEach(track => track.stop());
+    window.localStream = null;
 }
+
+window.addEventListener("pagehide", stopCamera);
 
 function captureFrame(videoElementId) {
     const video = document.getElementById(videoElementId);

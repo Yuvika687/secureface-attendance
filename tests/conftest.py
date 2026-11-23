@@ -37,6 +37,14 @@ from tests.helpers import PASSWORD, approve_scanner, csrf_token, login  # noqa: 
 
 
 
+@pytest.fixture(autouse=True)
+def _original_liveness_band(monkeypatch):
+    """Tests use the trained v2 band, not a local webcam calibration (gray_zone_v3.json)."""
+    from liveness import config as liveness_config
+    from liveness.predictor import load_gray_zone_band
+    monkeypatch.setattr(app_module, "_gray_zone_band", load_gray_zone_band(liveness_config.GRAY_ZONE_V2_PATH))
+
+
 @pytest.fixture(scope="session")
 def flask_app():
     app_module.app.config["TESTING"] = True
