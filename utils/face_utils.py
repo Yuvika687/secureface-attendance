@@ -287,11 +287,15 @@ def _ensure_cache():
 
 def data_uri_to_cv2_img(uri):
     """Convert base64 data URI to OpenCV BGR image."""
-    if not uri or ',' not in uri:
+    if not isinstance(uri, str) or ',' not in uri:
         return None
-    encoded_data = uri.split(',')[1]
-    nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
-    return cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    try:
+        data = base64.b64decode(uri.partition(',')[2], validate=True)
+        if data:
+            return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    except (ValueError, cv2.error):
+        pass
+    return None
 
 
 # ============================================================
@@ -436,7 +440,7 @@ def register_face(user_id, base64_img):
     Stores 512-D embedding in database as JSON.
     Multiple embeddings per user for robustness.
 
-    Returns True (stored), False (no usable face), or
+    Returns (saved sample count, required sample count), False (no usable face), or
     REGISTER_REJECTED_IDENTITY (sample rejected: it doesn't match this user's
     already-stored samples, or it matches another registered person).
     """
@@ -452,7 +456,7 @@ def register_face(user_id, base64_img):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = _run_face_mesh(img_rgb)
 
-    if not results.multi_face_landmarks:
+    if len(results.multi_face_landmarks) != 1:
         return False
 
     lms = results.multi_face_landmarks[0].landmark
@@ -532,7 +536,7 @@ def register_face(user_id, base64_img):
     invalidate_cache()
     print(f"[Register] User {user_id}: {len(existing)} embeddings stored "
           f"(fully_registered={bool(is_fully_registered)}, min_required={min_samples})")
-    return True
+    return len(existing), min_samples
 
 
 # ============================================================

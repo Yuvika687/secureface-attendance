@@ -1,6 +1,7 @@
 import os
 import io
 import csv
+from calendar import monthrange
 import uuid
 import sqlite3
 import time
@@ -30,6 +31,7 @@ from utils.validators import (
     validate_profile_photo, generate_secure_password, ALLOWED_DEPARTMENTS
 )
 from liveness.face_utils import FaceDetector, crop_face
+from liveness.mask import mask_probability
 from liveness.predictor import LivenessPredictor, classify_three_way, load_gray_zone_band
 
 try:
@@ -262,9 +264,13 @@ WIPE_CONFIRM_WORD = "WIPE"
 # Scanner result messages (one per outcome).
 MSG_ATTENDANCE_MARKED = "Attendance marked"
 MSG_ALREADY_MARKED = "Already marked today"
-MSG_FACE_NOT_RECOGNIZED = "Face not recognized — if you're wearing a mask, please remove it and try again."
+MSG_FACE_NOT_RECOGNIZED = "Face not recognized. Check your enrollment and try again."
 MSG_ACCOUNT_MISMATCH = "This face doesn't match this account"
 MSG_DEVICE_NOT_APPROVED = "This device is not an approved scanner."
+
+# Mask check: block only when the mask model is at least this sure on this many frames in a row.
+MASK_MIN_PROB = 0.90
+MASK_STREAK_FRAMES = 3
 
 # Scanner-device approval: an admin approves a browser; it keeps a random
 # token in this cookie (only the token's SHA-256 is stored server-side).
@@ -300,6 +306,7 @@ def _reset_liveness_session():
     session.pop('last_bbox', None)
     session.pop('last_logged_decision', None)
     session.pop('last_logged_stage', None)
+    session.pop('mask_streak', None)
     _clear_blink_attempt()
 
 
@@ -446,9 +453,12 @@ def _current_scanner_device():
 
 @app.route("/")
 def home():
-    if not _current_scanner_device():
-        return render_template("scanner_not_approved.html", msg=MSG_DEVICE_NOT_APPROVED), 403
-    return render_template("scanner.html", debug_mode=DEBUG_MODE)
+    from contextlib import closing
+    approved = bool(_current_scanner_device())
+    with closing(get_db_connection()) as conn:
+        enrolled = bool(conn.execute("SELECT 1 FROM users WHERE face_registered=1 AND face_embedding IS NOT NULL LIMIT 1").fetchone())
+    return render_template("scanner.html", approved=approved, enrolled=enrolled,
+                           approval_message=MSG_DEVICE_NOT_APPROVED, debug_mode=DEBUG_MODE)
 
 
 def _do_login(forced_role=None):
@@ -480,15 +490,21 @@ def _do_login(forced_role=None):
     session["name"] = user["name"]
     session["employee_id"] = user["employee_id"]
     session["profile_photo"] = user["profile_photo"] or ""
+    if session.pop("open_enrollment", False) and user["role"] == "employee":
+        return redirect(url_for("employee_dashboard", _anchor="register-face"))
     return redirect(url_for("admin_dashboard" if user["role"] == "admin" else "employee_dashboard"))
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if request.args.get("enroll") == "1":
+        session["open_enrollment"] = True
     if "user_id" in session:
         if session.get("role") == "admin":
             return redirect(url_for("admin_dashboard"))
         if session.get("role") == "employee":
+            if session.pop("open_enrollment", False):
+                return redirect(url_for("employee_dashboard", _anchor="register-face"))
             return redirect(url_for("employee_dashboard"))
     if request.method == "POST":
         return _do_login()
@@ -522,6 +538,8 @@ def how_it_works():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if request.args.get("enroll") == "1":
+        session["open_enrollment"] = True
     if request.method == "POST":
         cleaned, errors = validate_registration(request.form)
 
@@ -563,6 +581,8 @@ def register():
 @app.route("/logout")
 def logout():
     session.clear()
+    if request.args.get("enroll") == "1":
+        return redirect(url_for("login", enroll="1"))
     return redirect(url_for("home"))
 
 
@@ -1447,6 +1467,18 @@ def settings():
         email_minute = request.form.get("email_trigger_minute", "0")
         hr_email_val = (request.form.get("hr_email", "") or "").strip().lower()
 
+        try:
+            valid = (0 <= int(late_hour) <= 23 and 0 <= int(late_minute) <= 59
+                     and 0 <= int(email_hour) <= 23 and 0 <= int(email_minute) <= 59
+                     and 1 <= int(min_face_samples) <= 15
+                     and 0.3 <= float(face_tolerance) <= 0.6
+                     and 0.1 <= float(liveness_threshold) <= 0.9)
+        except ValueError:
+            valid = False
+        if not valid:
+            flash("Enter a valid time, sample count and recognition thresholds.", "error")
+            return redirect(url_for("settings"))
+
         set_setting('late_cutoff_hour', late_hour)
         set_setting('late_cutoff_minute', late_minute)
         set_setting('company_name', company_name)
@@ -1673,10 +1705,16 @@ def employee_dashboard():
             'status': today_record['status']
         }
 
-    month_start = datetime.now().replace(day=1).strftime("%Y-%m-%d")
+    current_month = datetime.fromisoformat(today).date().replace(day=1)
+    try:
+        selected_month = datetime.strptime(request.args.get("month", ""), "%Y-%m").date()
+        selected_month = min(selected_month, current_month)
+    except ValueError:
+        selected_month = current_month
+    days_in_month = monthrange(selected_month.year, selected_month.month)[1]
     month_records = conn.execute(
-        "SELECT date, time, status FROM attendance WHERE user_id = ? AND date >= ? ORDER BY date",
-        (session["user_id"], month_start)
+        "SELECT date, time, status FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date, time",
+        (session["user_id"], selected_month.isoformat(), selected_month.replace(day=days_in_month).isoformat())
     ).fetchall()
 
     calendar_data = {}
@@ -1699,6 +1737,8 @@ def employee_dashboard():
                            chart_data=chart_data,
                            today_status=today_status,
                            calendar_data=calendar_data,
+                           selected_month=selected_month, days_in_month=days_in_month,
+                           current_month=current_month.isoformat()[:7], today=today,
                            greeting=greeting,
                            late_days=late_count,
                            # A Late check-in is still a day you showed up --
@@ -1760,8 +1800,8 @@ def api_register_face():
     if "user_id" not in session:
         return jsonify({"success": False, "msg": "Unauthorized"}), 401
 
-    data = request.json
-    base64_img = data.get("image")
+    data = request.get_json(silent=True)
+    base64_img = data.get("image") if isinstance(data, dict) else None
 
     success = register_face(session["user_id"], base64_img)
     if success == REGISTER_REJECTED_IDENTITY:
@@ -1770,7 +1810,9 @@ def api_register_face():
     if not success:
         return jsonify({"success": False, "msg": "No face detected. Please try again."}), 400
 
-    return jsonify({"success": True, "msg": "Face registered successfully!"})
+    saved, required = success
+    return jsonify(success=True, saved=saved, required=required, complete=saved >= required,
+                   msg="Face sample saved.")
 
 
 @app.route("/api/recognize_face", methods=["POST"])
@@ -1791,7 +1833,9 @@ def api_recognize_face():
     timings = {}
     t_request_start = time.perf_counter()
     try:
-        data = request.json
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            data = {}
         base64_img = data.get("image")
         # Any blink flag the browser sends ("liveness_verified") is ignored:
         # the blink is verified server-side from Face Mesh (_advance_blink).
@@ -1818,6 +1862,9 @@ def api_recognize_face():
 
         if not base64_img:
             return jsonify({"success": False, "recognized": False, "msg": "No image data received."})
+
+        if data.get("restart_attempt") is True:
+            _reset_liveness_session()
 
         t0 = time.perf_counter()
         frame = data_uri_to_cv2_img(base64_img)
@@ -1900,6 +1947,19 @@ def api_recognize_face():
         liveness_threshold = float(get_setting('liveness_threshold', '0.5'))
         decision = classify_three_way(smoothed_prob_spoof, *_gray_zone_band, threshold=liveness_threshold)
         frame_scores = {"p_spoof_frame": raw_prob_spoof, "p_spoof_avg": smoothed_prob_spoof, "iou": frame_iou}
+
+        # Mask check (approved by the owner 2026-11-23): only block when the mask model is
+        # confident on several frames in a row. A single 0.5 cut-off fired on glasses and a
+        # hand passing the face, which blocked real check-ins.
+        p_mask = mask_probability(frame[best.y:best.y + best.height, best.x:best.x + best.width])             if decision != "SPOOF" else 0.0
+        mask_streak = session.get('mask_streak', 0) + 1 if p_mask >= MASK_MIN_PROB else 0
+        session['mask_streak'] = mask_streak
+        if mask_streak >= MASK_STREAK_FRAMES:
+            _clear_blink_attempt()
+            _log_scan_event("UNRECOGNIZED", detail=f"Face mask detected p_mask={round(p_mask, 3)}",
+                            test_label=test_label, **frame_scores)
+            return jsonify(success=False, recognized=False, state="MASK", face_box=face_box,
+                           msg="Remove your face mask and look at the camera.")
 
         if decision != "LIVE":
             _log_liveness_event_if_changed(decision, smoothed_prob_spoof)
@@ -2026,7 +2086,10 @@ def api_recognize_face():
             status = "Late" if is_late(time_str) else "Present"
 
             conn = get_db_connection()
-            existing = conn.execute("SELECT id FROM attendance WHERE user_id=? AND date=?", (user_id, date_str)).fetchone()
+            existing = conn.execute(
+                "SELECT time, status FROM attendance WHERE user_id=? AND date=? ORDER BY time DESC LIMIT 1",
+                (user_id, date_str)
+            ).fetchone()
 
             if not existing:
                 conn.execute("INSERT INTO attendance (user_id, date, time, status, method) VALUES (?, ?, ?, ?, ?)",
@@ -2056,6 +2119,8 @@ def api_recognize_face():
                 return jsonify({
                     "success": True, "recognized": True, "state": "LIVE", "face_box": face_box,
                     "msg": MSG_ALREADY_MARKED,
+                    "status": existing["status"],
+                    "time": existing["time"],
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
@@ -2078,6 +2143,7 @@ def api_recognize_face():
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,
+            "blink_pending": session.get("challenge_type") == "blink",
             "p_spoof": round(smoothed_prob_spoof, 4),
             "confidence": confidence, "timings": timings, "face_box": face_box,
             "msg": MSG_FACE_NOT_RECOGNIZED,

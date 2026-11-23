@@ -20,10 +20,10 @@ class Config:
             with open(_secret_file, "w") as f:
                 f.write(SECRET_KEY)
 
-    # Database — auto-detect PostgreSQL (Neon) vs SQLite
-    DATABASE_URL = os.environ.get("DATABASE_URL")  # Neon PostgreSQL URL
+    # Each laptop stores its own roster and attendance.
+    DATABASE_URL = None
     DATABASE_URI = os.path.join(BASE_DIR, "database", "smartface.db")  # SQLite fallback
-    USE_POSTGRES = bool(DATABASE_URL)
+    USE_POSTGRES = False  # Each installation owns its local SQLite database.
 
     # Mail Config
     MAIL_SERVER = 'smtp.gmail.com'

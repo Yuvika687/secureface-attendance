@@ -1,285 +1,65 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner - SecureFace Attendance</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    
-    <style>
-        :root {
-            --primary-glow: rgba(56, 189, 248, 0.5);
-            --success-glow: rgba(52, 211, 153, 0.6);
-            --danger-glow: rgba(248, 113, 113, 0.6);
-            --glass-bg: rgba(10, 14, 26, 0.5);
-            --glass-border: rgba(255, 255, 255, 0.08);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body, html {
-            width: 100%; height: 100%;
-            background-color: #000;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
-            color: #fff;
-        }
-
-        #video-container {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 1;
-        }
-        
-        #scanVideo {
-            width: 100%; height: 100%;
-            object-fit: contain;
-            transform: scaleX(-1);
-            filter: contrast(1.08) brightness(0.92) saturate(1.15);
-        }
-
-        .vignette {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, transparent 35%, rgba(0,0,0,0.85) 100%);
-            z-index: 2; pointer-events: none;
-        }
-
-        .top-nav {
-            position: absolute;
-            top: 0; left: 0; width: 100%;
-            padding: 25px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 10;
-        }
-
-        .logo {
-            display: flex; align-items: center; gap: 10px;
-            font-size: 1.35rem; font-weight: 700; letter-spacing: 0.5px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-        }
-        .logo i { font-size: 1.5rem; color: #10b981; }
-
-        .nav-btns { display: flex; gap: 0.75rem; }
-
-        .auth-btn {
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            padding: 10px 22px;
-            border-radius: 12px;
-            color: #fff;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.88rem;
-            display: flex; align-items: center; gap: 8px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        .auth-btn:hover {
-            background: rgba(255,255,255,0.08);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25);
-            border-color: rgba(16, 185, 129, 0.3);
-        }
-
-        /* Target Reticle */
-        .target-container {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 400px; height: 500px;
-            z-index: 5;
-            display: flex; justify-content: center; align-items: center;
-            transition: left 0.12s linear, top 0.12s linear, width 0.12s linear, height 0.12s linear;
-        }
-        /* Driven by real detection coordinates (see updateFaceBox()) once a
-           face is found -- left/top/width/height are then set inline by JS
-           and this rule no longer applies. */
-        .target-container.tracking {
-            transform: none;
-        }
-
-        .bracket {
-            position: absolute;
-            width: 45px; height: 45px;
-            border-color: #10b981;
-            border-style: solid;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
-            border-radius: 10px;
-        }
-        .tl { top:0; left:0; border-width: 3px 0 0 3px; }
-        .tr { top:0; right:0; border-width: 3px 3px 0 0; }
-        .bl { bottom:0; left:0; border-width: 0 0 3px 3px; }
-        .br { bottom:0; right:0; border-width: 0 3px 3px 0; }
-
-        .scan-laser {
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 100%;
-            background: linear-gradient(180deg, transparent, rgba(16, 185, 129, 0.15) 50%, rgba(16, 185, 129, 0.4) 95%, #10b981 100%);
-            clip-path: inset(0 0 100% 0);
-            animation: scan 2.5s infinite linear;
-            z-index: 6;
-            border-radius: 10px;
-            display: none;
-        }
-        @keyframes scan {
-            0% { clip-path: inset(0 0 100% 0); }
-            50% { clip-path: inset(0 0 0 0); }
-            100% { clip-path: inset(100% 0 0 0); }
-        }
-
-        .target-container.scanning .scan-laser { display: block; }
-        
-        .target-container.success .bracket { 
-            border-color: #34d399; box-shadow: 0 0 30px var(--success-glow);
-            transform: scale(1.05); border-radius: 18px;
-        }
-        .target-container.alert .bracket {
-            border-color: #f43f5e; box-shadow: 0 0 30px var(--danger-glow);
-            transform: scale(0.95);
-        }
-        /* UNCERTAIN: distinct from success (green), alert (red), and "no
-           face" -- a reject+retry state, not a hard failure. */
-        .target-container.uncertain .bracket {
-            border-color: #38bdf8; box-shadow: 0 0 30px var(--primary-glow);
-        }
-
-        /* Status Panel */
-        .status-panel {
-            position: absolute;
-            bottom: 7%; left: 50%;
-            transform: translateX(-50%);
-            background: var(--glass-bg);
-            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-            border: 1px solid var(--glass-border);
-            padding: 18px 35px;
-            border-radius: 18px;
-            text-align: center;
-            z-index: 10;
-            min-width: 300px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }
-
-        .status-panel.success { border-color: #34d399; background: rgba(6, 78, 59, 0.6); }
-        .status-panel.error { border-color: #f87171; background: rgba(127, 29, 29, 0.6); animation: shake 0.5s; }
-        .status-panel.uncertain { border-color: #38bdf8; background: rgba(12, 74, 110, 0.5); }
-
-        .status-title { font-size: 1.45rem; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.3px; }
-        .status-desc { font-size: 0.88rem; color: #94a3b8; font-weight: 400; }
-        
-        /* Status colors carry meaning only: green LIVE, red SPOOF,
-           blue UNCERTAIN, orange no face / more than one face. */
-        .target-container.live .bracket { border-color: #10b981; }
-        .target-container.noface .bracket { border-color: #f59e0b; box-shadow: 0 0 30px rgba(245,158,11,0.5); }
-        .status-panel.noface { border-color: #f59e0b; background: rgba(120, 53, 15, 0.5); }
-
-        /* Label drawn on the real face box */
-        .box-label {
-            position: absolute; left: 0; top: -30px;
-            padding: 3px 10px; border-radius: 8px;
-            font-size: 0.78rem; font-weight: 800; letter-spacing: 0.03em; color: #000;
-            background: #10b981; white-space: nowrap; display: none;
-            max-width: 260px; overflow: hidden; text-overflow: ellipsis;
-        }
-        .target-container.tracking .box-label { display: block; }
-        .target-container.alert .box-label { background: #f43f5e; }
-        .target-container.uncertain .box-label { background: #38bdf8; }
-        .target-container.noface .box-label { background: #f59e0b; }
-
-        /* Debug Overlay */
-        .debug-panel {
-            position: absolute;
-            top: 100px; left: 20px;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.05);
-            padding: 12px 16px;
-            border-radius: 10px;
-            z-index: 15;
-            font-family: 'JetBrains Mono', 'Consolas', monospace;
-            font-size: 0.68rem;
-            color: #64748b;
-            line-height: 1.6;
-            min-width: 180px;
-            display: none;
-        }
-        .debug-panel.active { display: block; }
-        .debug-panel .val { color: #10b981; font-weight: 700; }
-        .debug-panel .fail { color: #f43f5e; }
-        .debug-panel .warn { color: #f59e0b; }
-        .debug-label { color: #475569; }
-
-        /* Frame counter */
-        .frame-counter {
-            position: absolute;
-            top: 100px; right: 20px;
-            background: rgba(0,0,0,0.5);
-            padding: 6px 12px;
-            border-radius: 8px;
-            z-index: 15;
-            font-size: 0.7rem;
-            color: #475569;
-            font-weight: 600;
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(-50%); }
-            25% { transform: translateX(-52%); }
-            50% { transform: translateX(-48%); }
-            75% { transform: translateX(-52%); }
-        }
-
-        @keyframes pulse-ring {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-            100% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
-        }
-
-        .blink-prompt {
-            animation: pulse-ring 1.2s infinite;
-            border-radius: 18px;
-        }
-
-        @media (max-width: 768px) {
-            .target-container { width: 260px; height: 340px; }
-            .top-nav { padding: 15px 20px; flex-direction: column; gap: 12px; }
-            .status-panel { bottom: 4%; padding: 14px 22px; min-width: 260px;}
-            .debug-panel { display: none !important; }
-        }
-    </style>
-</head>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}"><title>Attendance scanner · SecureFace</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fx.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/scanner.css') }}"></head>
 <body>
-
-    <div id="video-container">
-        <video id="scanVideo" autoplay muted playsinline></video>
-        <div class="vignette"></div>
-    </div>
-
-    <div class="top-nav">
-        <div class="logo">
-            <i class="fa-solid fa-shield-halved"></i>
-            <span>SecureFace Attendance</span>
-        </div>
-        <div class="nav-btns">
-            <a href="{{ url_for('how_it_works') }}" class="auth-btn">
-                <i class="fa-solid fa-circle-info"></i> How it works
-            </a>
-            <a href="{{ url_for('login') }}" class="auth-btn">
-                <i class="fa-solid fa-right-to-bracket"></i> Log in
-            </a>
-        </div>
-    </div>
-
+<header class="mast">
+<a class="brand" href="/"><span class="brand-icon" aria-hidden="true"></span><span class="brand-text">SecureFace<small>Attendance station</small></span></a>
+<div class="mast-clock" aria-label="Current time"><span id="stationClock">--:--</span><time id="stationDate"></time></div>
+<nav aria-label="Main navigation"><a href="{{ url_for('how_it_works') }}">Guide</a>
+{% if session.get('role') == 'employee' %}<a class="admin" href="{{ url_for('employee_dashboard') }}">Dashboard &#8599;</a>{% else %}<a class="admin" href="{{ url_for('admin_login') }}">Admin &#8599;</a>{% endif %}</nav></header>
+<main id="scanner" data-approved="{{ approved|int }}" data-enrolled="{{ enrolled|int }}">
+<h1 class="sr-only">Attendance scanner</h1>
+<section class="surface" aria-label="Attendance scanner" data-camera="off">
+<div class="studio">
+<div class="studio-tools"><span class="camera-tag" id="cameraTag">Camera off</span><span class="station-name">Face check-in</span><button hidden type="button" id="fullscreen">Full screen</button></div>
+<div class="field">
+<div class="grid-plane" aria-hidden="true"></div>
+<div class="portal">
+<svg class="rings" viewBox="0 0 400 400" aria-hidden="true">
+<circle class="ring-ticks" cx="200" cy="200" r="192"/>
+<circle class="ring-track" cx="200" cy="200" r="172"/>
+<circle class="ring-progress" cx="200" cy="200" r="172" pathLength="100"/>
+<g class="ring-arcs"><circle cx="200" cy="200" r="182"/></g>
+<g class="ring-orbit"><circle cx="200" cy="8" r="4"/></g>
+</svg>
+<div class="viewfinder">
+<div class="portrait" id="portrait"><video hidden autoplay muted playsinline id="scanVideo"></video>
+<canvas id="preview" width="320" height="380" aria-label="Cropped camera preview"></canvas>
+<svg class="silhouette" viewBox="0 0 320 380" aria-hidden="true"><path d="M160 70c-44 0-74 34-74 84 0 34 13 64 32 82 12 11 26 18 42 18s30-7 42-18c19-18 32-48 32-82 0-50-30-84-74-84z"/><path d="M46 380c6-58 44-92 86-104 9 8 18 12 28 12s19-4 28-12c42 12 80 46 86 104"/><g class="dots"><circle cx="128" cy="150" r="3"/><circle cx="192" cy="150" r="3"/><circle cx="160" cy="186" r="3"/><circle cx="138" cy="214" r="3"/><circle cx="182" cy="214" r="3"/></g></svg>
+<div class="reticle" aria-hidden="true"><i></i></div><i class="sweep" aria-hidden="true"></i></div>
+</div>
+</div>
+</div>
+<ol class="steps" aria-label="Check-in progress"><li>Position</li><li>Verify</li><li>Check in</li></ol>
+</div>
+<div class="controls">
+<div class="state-mark" aria-hidden="true">
+<svg class="si si-idle" viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 20c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg>
+<svg class="si si-search" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="11" r="3"/><path d="M7 18c1-2 3-3 5-3s4 1 5 3"/></svg>
+<svg class="si si-check" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+<svg class="si si-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/></svg>
+<svg class="si si-block" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></svg>
+</div>
+<div class="panel-label">Scanner status</div>
+<div class="feedback" role="status" aria-live="polite" aria-atomic="true"><h2 id="title">{{ 'Device approval required' if not approved else ('Enroll your face' if not enrolled else 'Look at the camera') }}</h2>
+<p id="description">{% if not approved %}{{ approval_message }} Approve this browser in Admin &rarr; Settings &rarr; Scanner Devices.{% elif not enrolled %}No faces are enrolled on this laptop yet. Sign in and choose Register Face to get started.{% else %}Center your face inside the frame and blink naturally.{% endif %}</p></div>
+<div class="actions">
+{% if session.get('role') == 'admin' %}
+<a class="primary" href="{{ url_for('logout', enroll='1') }}">Sign out to register your face <span aria-hidden="true">&rarr;</span></a>
+<a href="{{ url_for('settings') }}">Scanner settings</a>
+{% else %}
+<a class="primary" href="{{ url_for('login', enroll='1') }}">Register your face <span aria-hidden="true">&rarr;</span></a>
+{% if session.get('user_id') %}<a href="{{ url_for('logout') }}">Sign out</a>{% else %}<a href="{{ url_for('register', enroll='1') }}">Create account</a>{% endif %}
+{% endif %}</div>
+<ul class="tips" aria-label="Tips for a quick check-in">
+<li><span class="tip-ico" aria-hidden="true">&#9728;</span><div><b>Face the light</b><small>Light on your face, not behind you.</small></div></li>
+<li><span class="tip-ico" aria-hidden="true">&#9673;</span><div><b>Look straight ahead</b><small>Keep your whole face inside the oval.</small></div></li>
+<li><span class="tip-ico" aria-hidden="true">&#9737;</span><div><b>Blink once</b><small>A natural blink finishes the check.</small></div></li>
+</ul>
+</div></section>
+<output hidden id="debug"></output>
     {% if debug_mode %}
     <!-- Dev-only test-category label (FLASK_DEBUG=1 only). Purely descriptive --
          tags each scan_events row with what's being shown to the camera for this
@@ -331,352 +111,11 @@
     </script>
     {% endif %}
 
-    <!-- Debug overlay (toggle with 'D' key) -->
-    <div class="debug-panel" id="debugPanel">
-        <div><span class="debug-label">P(spoof) avg:</span> <span id="dbgSpoof" class="val">—</span></div>
-        <div><span class="debug-label">Match similarity:</span> <span id="dbgConf" class="val">—</span></div>
-        <div><span class="debug-label">EAR:</span> <span id="dbgEar" class="val">—</span></div>
-        <div><span class="debug-label">Eyes:</span> <span id="dbgEyes" class="val">—</span></div>
-        <div><span class="debug-label">Server time:</span> <span id="dbgDist" class="val">—</span></div>
-        <div><span class="debug-label">State:</span> <span id="dbgState" class="val">—</span></div>
-        <div style="margin-top:6px; border-top:1px solid rgba(255,255,255,0.05); padding-top:6px;">
-            <span class="debug-label">API Time:</span> <span id="dbgLatency" class="val">—</span>
-        </div>
-    </div>
-
-    <div class="frame-counter" id="frameCounter">Frames: 0</div>
-
-    <div class="target-container" id="targetBox">
-        <div class="bracket tl"></div><div class="bracket tr"></div>
-        <div class="bracket bl"></div><div class="bracket br"></div>
-        <div class="scan-laser"></div>
-        <div class="box-label" id="boxLabel"></div>
-    </div>
-
-    <div class="status-panel" id="statusPanel">
-        <div class="status-title" id="sTitle">Step into the frame.</div>
-        <div class="status-desc" id="sDesc"></div>
-    </div>
-
-    <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
-    <script>
-    document.addEventListener("DOMContentLoaded", () => {
-        startCamera("scanVideo");
-
-        const targetBox = document.getElementById("targetBox");
-        const statusPanel = document.getElementById("statusPanel");
-        const sTitle = document.getElementById("sTitle");
-        const sDesc = document.getElementById("sDesc");
-        const vid = document.getElementById("scanVideo");
-        const boxLabel = document.getElementById("boxLabel");
-        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        const debugPanel = document.getElementById("debugPanel");
-        const frameCounter = document.getElementById("frameCounter");
-
-        let isProc = false;
-        let frameCount = 0;
-        let consecutiveRecognitions = 0;  // Track consecutive successful recognitions
-        let lastRecognizedUser = null;
-
-        // Debug toggle with D key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'd' || e.key === 'D') {
-                debugPanel.classList.toggle('active');
-            }
-        });
-
-        function updateDebug(res) {
-            // NOTE: res.anti_spoof_score / res.spoof_checks no longer exist --
-            // the rule-based anti-spoofing engine was deleted. The trained
-            // MobileNetV3-Small model now reports res.p_spoof (0-1,
-            // P(spoof)) and res.state (NO_FACE / MULTI_FACE / SPOOF /
-            // UNCERTAIN / LIVE). This is a data-wiring fix only -- the full
-            // visual redesign of this page is a separate pass.
-            const lm = res.liveness_metrics || {};
-            document.getElementById('dbgConf').textContent = res.confidence !== undefined ? (res.confidence / 100).toFixed(2) : '—';
-            document.getElementById('dbgSpoof').textContent = res.p_spoof !== undefined ? res.p_spoof.toPrecision(3) : '—';
-            document.getElementById('dbgEar').textContent = lm.ear !== undefined ? lm.ear.toFixed(3) : '—';
-            document.getElementById('dbgEyes').textContent = lm.eyes_closed !== undefined ? (lm.eyes_closed ? 'CLOSED' : 'OPEN') : '—';
-            document.getElementById('dbgDist').textContent = res.timings && res.timings.total_ms !== undefined ? res.timings.total_ms + 'ms' : '—';
-            document.getElementById('dbgState').textContent = res.error ? 'ERROR' : (res.state || '—');
-
-        }
-
-        function updateFaceBox(faceBox) {
-            // Positions the real target box at the actual detected face
-            // location instead of a fixed decorative frame. The captured
-            // canvas frame (faceBox.frame_width/height) is a uniform scale
-            // of the video's native resolution, and the video is displayed
-            // with object-fit:contain (letterboxed) and mirrored via CSS
-            // scaleX(-1) -- so the box position must go through the same
-            // scale-to-native, scale-to-displayed, then mirror steps.
-            if (!faceBox) {
-                targetBox.classList.remove('tracking');
-                targetBox.style.left = '';
-                targetBox.style.top = '';
-                targetBox.style.width = '';
-                targetBox.style.height = '';
-                return;
-            }
-            const rect = vid.getBoundingClientRect();
-            const Vw = vid.videoWidth, Vh = vid.videoHeight;
-            if (!Vw || !Vh || !rect.width || !rect.height) return;
-
-            const scale = Math.min(rect.width / Vw, rect.height / Vh);
-            const dispW = Vw * scale, dispH = Vh * scale;
-            const offX = (rect.width - dispW) / 2, offY = (rect.height - dispH) / 2;
-
-            const toVideoScale = Vw / faceBox.frame_width;
-            const nx = faceBox.x * toVideoScale, ny = faceBox.y * toVideoScale;
-            const nw = faceBox.width * toVideoScale, nh = faceBox.height * toVideoScale;
-
-            const screenX = offX + nx * scale, screenY = offY + ny * scale;
-            const screenW = nw * scale, screenH = nh * scale;
-            const mirroredLeft = rect.width - screenX - screenW;
-
-            targetBox.classList.add('tracking');
-            targetBox.style.left = mirroredLeft + 'px';
-            targetBox.style.top = screenY + 'px';
-            targetBox.style.width = screenW + 'px';
-            targetBox.style.height = screenH + 'px';
-        }
-
-        function setCamStatus(title, desc, state, label) {
-            sTitle.innerHTML = title;
-            sDesc.innerHTML = desc;
-            boxLabel.textContent = label || '';
-
-            const wasTracking = targetBox.classList.contains('tracking');
-            targetBox.className = "target-container" + (wasTracking ? " tracking" : "");
-            statusPanel.className = "status-panel";
-
-            if (state === 'scanning') {
-                targetBox.classList.add("scanning");
-            } else if (state === 'blink') {
-                targetBox.classList.add("scanning");
-                statusPanel.classList.add("blink-prompt");
-            } else if (state === 'success') {
-                targetBox.classList.add("success");
-                statusPanel.classList.add("success");
-            } else if (state === 'uncertain') {
-                // Distinct color from both success (green) and alert (red) --
-                // and from "no face" (not styled as alert either). Treated as
-                // reject + log + retry, not a hard failure.
-                targetBox.classList.add("uncertain");
-                statusPanel.classList.add("uncertain");
-            } else if (state === 'alert') {
-                // SPOOF only
-                targetBox.classList.add("alert");
-                statusPanel.classList.add("error");
-            } else if (state === 'noface') {
-                targetBox.classList.add("noface");
-                statusPanel.classList.add("noface");
-            } else if (state === 'live') {
-                // LIVE face, but not (yet) a match -- box green, panel neutral
-                targetBox.classList.add("live");
-            }
-        }
-
-        let consecutiveErrors = 0;
-        let coldStartTimer = null;
-        let coldStartSeconds = 0;
-
-        async function engine() {
-            if(!isProc && vid.readyState === 4) {
-                isProc = true;
-                frameCount++;
-                frameCounter.textContent = `Frames: ${frameCount}`;
-                
-                const b64 = captureFrame("scanVideo");
-                if(!b64) { isProc = false; setTimeout(engine, 150); return; }
-
-                const t0 = performance.now();
-
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout (local)
-
-                    const payload = {image:b64};  // the blink is verified by the server
-                    if (window.getDevTestLabel) {
-                        const lbl = window.getDevTestLabel();
-                        if (lbl) payload.test_label = lbl;
-                    }
-                    const req = await fetch("{{ url_for('api_recognize_face') }}", {
-                        method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify(payload),
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
-
-                    const res = await req.json();
-                    consecutiveErrors = 0; // Reset on success
-                    if (coldStartTimer) { clearInterval(coldStartTimer); coldStartTimer = null; }
-
-                    const latency = Math.round(performance.now() - t0);
-                    document.getElementById('dbgLatency').textContent = latency + 'ms';
-                    
-                    updateDebug(res);
-
-                    // Device approval removed while this page was open: stop scanning.
-                    if (res.device_not_approved) {
-                        setCamStatus(esc(res.msg), "", "normal");
-                        updateFaceBox(null);
-                        return;
-                    }
-
-                    // Handle API error
-                    if (res.error) {
-                        setCamStatus(
-                            '<i class="fa-solid fa-exclamation-triangle"></i> Scanner error',
-                            `<span>${esc(res.msg || 'Recognition engine failed')}</span>`,
-                            "normal"
-                        );
-                        updateFaceBox(null);
-                    } else if (res.multi_face) {
-                        setCamStatus("Only one person at a time.", "", "noface", "MULTIPLE FACES");
-                        updateFaceBox(res.face_box || null);
-                        consecutiveRecognitions = 0;
-                        lastRecognizedUser = null;
-                    } else if(res.spoofing_detected) {
-                        setCamStatus("Spoof detected", esc(res.msg || "Spoof detected — please use your real face."), "alert", "SPOOF");
-                        updateFaceBox(res.face_box || null);
-                        consecutiveRecognitions = 0;
-                        lastRecognizedUser = null;
-                    } else if(res.state === "UNCERTAIN") {
-                        // Reject + log + retry, not a hard failure -- its own
-                        // distinct color (blue), never styled as "alert".
-                        // Desc is intentionally blank: the title already
-                        // carries the one required message, and repeating it
-                        // in the desc was the literal on-screen duplicate.
-                        setCamStatus("Hold still — checking again.", "", "uncertain", "UNCERTAIN");
-                        updateFaceBox(res.face_box || null);
-                        consecutiveRecognitions = 0;
-                        lastRecognizedUser = null;
-                    } else if(res.recognized) {
-                        if (res.user === lastRecognizedUser) {
-                            consecutiveRecognitions++;
-                        } else {
-                            consecutiveRecognitions = 1;
-                            lastRecognizedUser = res.user;
-                        }
-
-                        if (res.success) {
-                            let initials = esc(res.user.substring(0, 2).toUpperCase());
-                            let avatar = `<div style="width:56px; height:56px; background:linear-gradient(135deg, #10b981, #06b6d4); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:800; color:#fff; border:3px solid #fff; box-shadow:0 0 25px rgba(16,185,129,0.6); margin:0 auto 10px;">${initials}</div>`;
-                            // res.status only exists on a NEWLY-marked attendance
-                            // response (see app.py) -- distinguishes a fresh
-                            // grant from an already-checked-in welcome-back, so
-                            // the heading matches what actually happened instead
-                            // of always claiming "Access Granted".
-                            let heading = res.status !== undefined ? "Access Granted" : "Welcome Back";
-                            setCamStatus(avatar + `<div>${heading}</div>`, `<div style='color:#e2e8f0; font-weight:700; font-size:1.1rem;'>${esc(res.user)}</div><div style='color:#94a3b8; font-family:monospace; font-size:0.9rem; margin-bottom:4px;'>Student ID: ${esc(res.emp_id)}</div><span style='color:#34d399; font-weight:700; font-size:1.05rem;'>${esc(res.msg)}${res.status ? ` (${esc(res.status)})` : ''}</span>`, "success", `LIVE · ${res.user}`);
-                            updateFaceBox(res.face_box || null);
-
-                            setTimeout(() => {
-                                isProc = false;
-                                consecutiveRecognitions = 0; lastRecognizedUser = null;
-                                setCamStatus("Step into the frame.", "", "normal");
-                                updateFaceBox(null);
-                                setTimeout(engine, 500);
-                            }, 3500);
-                            return;
-                        } else {
-                            // No visible instruction -- the server waits
-                            // silently for one natural blink (open -> closed
-                            // -> open, from its own Face Mesh reading).
-                            setCamStatus("Live face — verifying…", "", "blink", "LIVE");
-                            updateFaceBox(res.face_box || null);
-                        }
-                    } else if(res.face_found) {
-                        // Message text comes from the server (one message per
-                        // outcome). Account mismatch gets no register link.
-                        setCamStatus(
-                            esc(res.msg || "Face not recognized"),
-                            res.account_mismatch ? "" :
-                                "Not registered? <a href='{{ url_for('register') }}' style='color:#10b981; font-weight:bold;'>Create an account</a> and register your face.",
-                            "live", "LIVE"
-                        );
-                        updateFaceBox(res.face_box || null);
-                        consecutiveRecognitions = 0; lastRecognizedUser = null;
-                        setTimeout(() => {
-                            isProc = false;
-                            setCamStatus("Step into the frame.", "", "normal");
-                            updateFaceBox(null);
-                            setTimeout(engine, 500);
-                        }, 2500);
-                        return;
-                    } else {
-                        setCamStatus("Step into the frame.", "", "noface", "NO FACE");
-                        updateFaceBox(res.face_box || null);
-                        consecutiveRecognitions = 0; lastRecognizedUser = null;
-                    }
-                } catch(e) {
-                    consecutiveErrors++;
-                    console.warn(`[Scanner] API error #${consecutiveErrors}:`, e.message);
-
-                    if (e.name === 'AbortError') {
-                        setCamStatus(
-                            '<i class="fa-solid fa-hourglass-half" style="color:#f59e0b;"></i> Processing...',
-                            '<span style="color:#94a3b8;">The server is taking longer than usual…</span>',
-                            "scanning"
-                        );
-                        isProc = false;
-                        setTimeout(engine, 1000);
-                        return;
-                    }
-                    
-                    if (consecutiveErrors >= 2) {
-                        // The server may be returning 502s or struggling under load
-                        if (!coldStartTimer) {
-                            coldStartSeconds = 0;
-                            coldStartTimer = setInterval(() => {
-                                coldStartSeconds++;
-                                const dots = '.'.repeat((coldStartSeconds % 3) + 1);
-                                setCamStatus(
-                                    '<i class="fa-solid fa-server" style="color:#8b5cf6;"></i> Server Busy' + dots,
-                                    `<span style="color:#a78bfa;">Waiting for the server — ${coldStartSeconds}s. Please wait.</span>`,
-                                    "scanning"
-                                );
-                            }, 1000);
-                        }
-                        // Back off: don't hammer the server, wait 3 seconds between retries
-                        isProc = false;
-                        setTimeout(engine, 3000);
-                        return;
-                    } else {
-                        setCamStatus(
-                            '<i class="fa-solid fa-wifi" style="color:#f59e0b;"></i> Connecting...',
-                            '<span style="color:#94a3b8;">Connecting to the scanner server…</span>',
-                            "scanning"
-                        );
-                    }
-                }
-                isProc = false;
-            }
-            setTimeout(engine, 150);
-        }
-        
-        // Start with a wake-up ping first, then initialize scanner
-        setTimeout(() => {
-            setCamStatus(
-                '<i class="fa-solid fa-microchip" style="color:#10b981;"></i> Initializing AI...',
-                'Connecting to recognition engine',
-                "scanning"
-            );
-            // Send a lightweight ping to wake the server
-            fetch("{{ url_for('api_recognize_face') }}", {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({image: ''})
-            }).catch(() => {});
-            
-            setTimeout(() => {
-                setCamStatus("Step into the frame.", "", "normal");
-                engine();
-            }, 1500);
-        }, 600);
-    });
-    </script>
-</body>
-</html>
-
+</main>
+<script src="{{ url_for('static',filename='js/csrf.js') }}"></script><script src="{{ url_for('static',filename='js/camera.js') }}"></script>
+<script src="{{ url_for('static',filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static',filename='js/fx.js') }}" defer></script><script>
+(function(){var c=document.getElementById("stationClock"),d=document.getElementById("stationDate");
+function tick(){var n=new Date();c.textContent=n.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.textContent=n.toLocaleDateString([], {weekday:"long",day:"numeric",month:"long"});d.dateTime=n.toISOString().slice(0,10);}
+tick();setInterval(tick,1000);})();
+</script></body></html>
