@@ -1,6 +1,6 @@
 Flask
 Flask-WTF
-opencv-python-headless
+opencv-python-headless; sys_platform != "win32"
 numpy
 Pillow
 APScheduler
@@ -12,9 +12,12 @@ psycopg2-binary
 # -- confirmed in anti_spoof_attendance, the project this liveness model and
 # BlazeFace detector are reused from. 0.10.30 is the last version with a
 # working Metal path on this hardware.
-mediapipe==0.10.30
+mediapipe==0.10.30; sys_platform != "win32"
+mediapipe==1.2.3; sys_platform == "win32"
 onnxruntime
 torch>=2.1.0
 torchvision>=0.16.0
 dnspython
 pytest
+
+waitress

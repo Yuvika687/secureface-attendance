@@ -1,36 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner - SecureFace Attendance</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            min-height: 100vh; display: flex; align-items: center; justify-content: center;
-            background: #000; color: #fff; font-family: 'Inter', sans-serif; padding: 16px;
-        }
-        .card {
-            max-width: 420px; width: 100%; text-align: center; padding: 2rem 1.5rem;
-            background: rgba(10, 14, 26, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;
-        }
-        .card i { font-size: 2.2rem; color: #f59e0b; margin-bottom: 1rem; }
-        .card h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.6rem; }
-        .card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.5; }
-        .card a { color: #10b981; font-weight: 600; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <i class="fa-solid fa-ban"></i>
-        <h1>{{ msg }}</h1>
-        <p>Attendance can only be marked on a scanner device approved by an admin.<br>
-           Students: <a href="{{ url_for('login') }}">log in</a> to view your attendance.<br>
-           Admins: approve this device in <a href="{{ url_for('settings') }}">Settings</a>.</p>
-    </div>
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}"><title>SecureFace Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fx.css') }}">
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;color:#eef1ff;font:1rem/1.6 Inter,"Segoe UI",system-ui,sans-serif;padding:24px}
+main{position:relative;z-index:1;max-width:740px;width:100%;border-radius:26px;overflow:hidden;border:1px solid rgba(160,180,255,.18);background:linear-gradient(180deg,rgba(20,26,46,.72),rgba(10,13,26,.78));backdrop-filter:blur(20px);box-shadow:0 50px 100px -40px #000,0 0 80px -30px rgba(255,193,99,.35);animation:in 1s cubic-bezier(.22,1,.36,1) both}
+header,section{padding:clamp(24px,6vw,52px)}
+header{position:relative;border-bottom:1px solid rgba(160,180,255,.1);background:radial-gradient(ellipse at 0% 0%,rgba(255,193,99,.14),transparent 60%)}
+header strong{display:inline-flex;align-items:center;gap:10px;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:#ffc163}
+header strong::before{content:'';width:8px;height:8px;border-radius:50%;background:#ffc163;box-shadow:0 0 12px #ffc163;animation:blink 1.4s steps(2) infinite}
+h1{font-size:clamp(2.2rem,5.5vw,3.8rem);line-height:1.02;letter-spacing:-.055em;margin:18px 0 12px;background:linear-gradient(180deg,#fff 30%,#a9b6e6);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{margin:0 0 4px;font-size:1.2rem;letter-spacing:-.02em}
+p{margin:8px 0;color:#a6aecb}section{display:grid;gap:18px}
+a{padding:13px 20px;background:linear-gradient(120deg,#4ff0c4,#6ea8ff 50%,#a68bff);color:#061017;text-decoration:none;border-radius:12px;font-weight:750;display:inline-block;box-shadow:0 12px 30px -10px rgba(79,240,196,.6);transition:translate .5s cubic-bezier(.34,1.56,.64,1),box-shadow .3s}
+a:hover{box-shadow:0 16px 40px -12px rgba(110,168,255,.7)}
+a.secondary{background:rgba(255,255,255,.04);color:#eef1ff;box-shadow:inset 0 0 0 1px rgba(160,180,255,.2)}
+nav{display:flex;gap:10px;flex-wrap:wrap}
+footer{border-top:1px solid rgba(160,180,255,.1);padding-top:16px;color:#a6aecb;font-size:.92rem}
+footer a{background:none;color:#4ff0c4;padding:2px;box-shadow:none;text-decoration:underline;font-weight:650}
+@keyframes in{from{opacity:0;transform:translateY(20px) scale(.98);filter:blur(8px)}}
+@keyframes blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body><main><header><strong>SecureFace Attendance</strong><h1>Student check-in</h1><p>{{ msg }}</p></header><section><div><h2>Student portal</h2><p>Register your face and review your attendance from your dashboard.</p></div><nav><a href="{{ url_for('login') }}">Student login</a><a class="secondary" href="{{ url_for('register') }}">Create account</a></nav><footer>Setting up a scanner? <a href="{{ url_for('login',role='admin') }}">Sign in as admin</a> and approve this browser in Settings.</footer></section></main><script src="{{ url_for('static', filename='js/fx.js') }}" defer></script></body></html>

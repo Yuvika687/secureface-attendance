@@ -25,3 +25,8 @@ liveness/weights/blaze_face_short_range.tflite
 # Domain-adaptation collection (Phase 3): real face crops of real people --
 # never committed.
 data/domain_adaptation/
+
+static/uploads/
+*.log
+
+_ui_backup_*/

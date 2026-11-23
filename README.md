@@ -1,8 +1,7 @@
 # SecureFace Attendance
 
 A Flask attendance app that marks students present by face recognition, with a
-**self-trained liveness (anti-spoofing) model** in front of it, so a printed photo, a
-phone or a screen can't be used to fake someone's attendance.
+**self-trained liveness (anti-spoofing) model** in front of it, to screen for printed photos and screen replays.
 
 It merges two of the owner's earlier projects: a Flask face-recognition attendance app
 (originally `Sofzenix/Smart-Attendance-System`) and a MobileNetV3-Small liveness
@@ -68,41 +67,50 @@ These are dataset numbers. On a real webcam the model sees a different domain (s
 shows the full set read from `summary.json`, and live Test Mode results in a separate,
 labeled section.
 
-## Run it (macOS)
+## Run on your laptop
 
-Requirements: **Python 3.13** (`.python-version`, `runtime.txt`) and a webcam.
-`mediapipe==0.10.30` is pinned exactly because newer versions crash on Apple Silicon
-with Metal (see `requirements.txt`).
+Download the repository ZIP and extract it to a writable folder, or clone it with Git.
+On Windows install 64-bit Python 3.13 with the Python launcher. Open that folder and
+run **setup.cmd** once. It installs dependencies in a private virtual environment and
+asks you to create your own admin. Then run **start.cmd** and open
+[SecureFace](http://localhost:5000). Keep the server window open.
+First startup requires internet for the pretrained vision models. On macOS/Linux use
+Python 3.13 to create a venv, install requirements.txt, then run
+`python scripts/create_admin.py` and `python run_local.py` in that environment.
 
-```bash
-git clone https://github.com/Yuvika687/secureface-attendance.git
-cd secureface-attendance
-python3.13 -m venv venv
-./venv/bin/pip install -r requirements.txt
-cp .env.example .env     # set SECRET_KEY and FACE_ENCRYPTION_KEY; omit DATABASE_URL for local SQLite
+1. Sign in as admin on the intended scanner browser. Open Settings → Scanner Devices →
+   Set this device as scanner, then log out.
+2. Students create accounts and use Register Face in their dashboards. Allow camera
+   access and capture the requested samples with only one unobstructed face visible.
+3. Return to the scanner in the approved browser. Look at the camera and blink naturally.
+   Check the student's dashboard or admin attendance history for the result.
 
-./venv/bin/python scripts/create_admin.py           # create an admin login (interactive)
-./venv/bin/python app.py                            # http://localhost:5000
-```
+The scanner opens the camera when the browser is approved and at least one face is
+enrolled. Select **Full screen** for a shared station. An unfamiliar live face gets
+a registration prompt. Students can resume partially saved enrollment and use the
+month picker on their dashboard to view earlier attendance. Dashboard charts, fonts,
+and icons are served by the laptop.
 
-The first run downloads the BlazeFace, Face Landmarker and ArcFace model files (not in
-git). The liveness weights are committed.
+Each installation creates its own empty SQLite database in `database/smartface.db`.
+Every friend creates their own accounts, scanner approvals and enrollments. Back up the
+database after stopping the app, together with the private `.face_key`. Keep the
+database, keys, uploads and virtual environment out of Git. Share the repository via
+GitHub rather than zipping your used working directory.
 
-**First-time setup in the browser:**
+### Optional Cloudflare Tunnel
 
-1. Open `http://localhost:5000/login`, choose **Admin**, and log in.
-2. On the computer that will be the scanner, go to **Settings → Scanner Devices** and
-   click **Set this device as scanner**. Until you do, `/` shows "This device is not
-   an approved scanner."
-3. Students create an account (`/register`), log in, and register their face from their
-   dashboard.
+After the local app works, install cloudflared separately following the
+[Cloudflare installation guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+In a second terminal run `cloudflared tunnel --url http://127.0.0.1:5000`.
+Open its printed HTTPS address on the scanner, sign in as admin on that address,
+approve the browser, and log out. A new temporary hostname needs a new approval.
+Keep your laptop awake and both processes running. Ctrl+C in the tunnel terminal
+stops public access. The HTTPS link reaches the database of the laptop hosting the tunnel.
 
-Port 5000 can clash with macOS AirPlay Receiver: turn it off in System Settings, or free
-the port with `lsof -ti:5000 | xargs kill -9`. To reach the app from another device
-(e.g. a phone) see [`docs/ngrok.md`](docs/ngrok.md).
-
-`FLASK_DEBUG=1 ./venv/bin/python app.py` adds dev tools: the scanner's test-label
-dropdown and "clear today's attendance".
+The scanner also evaluates face masks with a separate MobileNetV2 classifier.
+A mask prediction asks for an uncovered face and blocks check-in. Spoof rejection
+takes priority. These checks depend on a visible face and can make mistakes.
+See [mask model and license](docs/MASK_MODEL.md).
 
 ### Tests
 
@@ -145,6 +153,6 @@ SCANNER_DEVICE_TOKEN=<scanner_device cookie value> \
   (Test Mode → Collection mode); see `docs/domain_adaptation_plan.md`. No recalibration has been done yet.
 - The silent blink is not a defense against video replay (a video blinks too). The
   liveness model is the main defense.
-- The Postgres path has never been run against a live database.
+- This local edition uses SQLite on the host laptop.
 
 Full detail: [`docs/HANDOVER.md`](docs/HANDOVER.md).
