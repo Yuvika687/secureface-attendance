@@ -1,76 +1,54 @@
 {% extends 'base.html' %}
 {% block title %}Spoof Log - SecureFace Attendance{% endblock %}
 {% block page_title %}Spoof Log{% endblock %}
-{% block page_subtitle %}Scanner frames judged SPOOF or UNCERTAIN{% endblock %}
+{% block page_subtitle %}Scanner frames the liveness model blocked (SPOOF) or wasn't sure about (UNCERTAIN){% endblock %}
 
 {% block content %}
-<form method="GET" action="{{ url_for('admin_spoof_log') }}" class="filter-row">
-    <div>
-        <label for="fStage">Decision</label>
-        <select id="fStage" name="stage" class="form-control">
-            <option value="all" {% if f.stage not in ('SPOOF','UNCERTAIN') %}selected{% endif %}>SPOOF + UNCERTAIN</option>
-            <option value="SPOOF" {% if f.stage == 'SPOOF' %}selected{% endif %}>SPOOF only</option>
-            <option value="UNCERTAIN" {% if f.stage == 'UNCERTAIN' %}selected{% endif %}>UNCERTAIN only</option>
-        </select>
-    </div>
-    <div>
-        <label for="fFrom">From (UTC date)</label>
-        <input id="fFrom" type="date" name="from" value="{{ f.from }}" class="form-control">
-    </div>
-    <div>
-        <label for="fTo">To (UTC date)</label>
-        <input id="fTo" type="date" name="to" value="{{ f.to }}" class="form-control">
-    </div>
-    <div>
-        <label for="fLabel">Test label</label>
-        <select id="fLabel" name="label" class="form-control">
-            <option value="">Any</option>
-            {% for l in labels %}<option value="{{ l }}" {% if f.label == l %}selected{% endif %}>{{ l }}</option>{% endfor %}
-        </select>
-    </div>
-    <div style="display:flex; gap:0.5rem;">
-        <button type="submit" class="btn-primary" style="padding:0.55rem 1rem;"><i class="fa-solid fa-filter"></i> Filter</button>
-        <a class="btn-sm" style="padding:0.55rem 1rem;" href="{{ url_for('admin_spoof_log') }}?{{ request.query_string.decode() }}{{ '&' if request.query_string else '' }}export=csv">
-            <i class="fa-solid fa-file-csv"></i> Export CSV
-        </a>
-    </div>
-</form>
+<div class="ui-page">
+    {% include '_log_tabs.html' %}
 
-<p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem;">
-    {{ rows|length }} event{{ '' if rows|length == 1 else 's' }} (newest first, max 2000). The scanner logs a state once when it starts,
-    not on every frame. Frame score = that frame's P(spoof); Average = the 5-frame average the decision used.
-</p>
+    <form method="GET" action="{{ url_for('admin_spoof_log') }}" class="ui-card ui-filters">
+        <label>Decision
+            <select name="stage">
+                <option value="all" {% if f.stage not in ('SPOOF','UNCERTAIN') %}selected{% endif %}>SPOOF + UNCERTAIN</option>
+                <option value="SPOOF" {% if f.stage == 'SPOOF' %}selected{% endif %}>SPOOF only</option>
+                <option value="UNCERTAIN" {% if f.stage == 'UNCERTAIN' %}selected{% endif %}>UNCERTAIN only</option>
+            </select>
+        </label>
+        <label>From (UTC) <input type="date" name="from" value="{{ f.from }}"></label>
+        <label>To (UTC) <input type="date" name="to" value="{{ f.to }}"></label>
+        {% if labels %}
+        <label>Test label
+            <select name="label">
+                <option value="">Any</option>
+                {% for l in labels %}<option value="{{ l }}" {% if f.label == l %}selected{% endif %}>{{ l }}</option>{% endfor %}
+            </select>
+        </label>
+        {% endif %}
+        <button type="submit" class="ui-btn primary">Filter</button>
+        <a class="ui-btn push" href="{{ url_for('admin_spoof_log') }}?{{ request.query_string.decode() }}{{ '&' if request.query_string else '' }}export=csv"><i class="fa-solid fa-download"></i> Export CSV</a>
+    </form>
 
-<div class="table-panel">
-    <div class="table-scroll">
-    <table>
-        <thead>
-            <tr>
-                <th>Time (UTC)</th>
-                <th>Decision</th>
-                <th>Frame score</th>
-                <th>Average</th>
-                <th>IoU</th>
-                <th>Test label</th>
-                <th>Session</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in rows %}
-            <tr>
-                <td style="white-space:nowrap;">{{ r['created_at'] }}</td>
-                <td><span class="state-badge state-{{ r['stage'] }}">{{ r['stage'] }}</span></td>
-                <td class="num">{{ '%.4g'|format(r['p_spoof_frame']) if r['p_spoof_frame'] is not none else '—' }}</td>
-                <td class="num">{{ '%.4g'|format(r['p_spoof_avg']) if r['p_spoof_avg'] is not none else ('—' if not r['detail'] else r['detail']) }}</td>
-                <td class="num">{{ '%.3f'|format(r['iou']) if r['iou'] is not none else '—' }}</td>
-                <td style="font-size:0.75rem;">{{ r['test_label'] or '' }}</td>
-                <td class="num">{{ r['session_id'][:8] }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7"><div class="empty-state"><i class="fa-solid fa-shield-check"></i>No SPOOF or UNCERTAIN events match these filters.</div></td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="ui-card flush">
+        <div class="ui-card-title">{{ rows|length }} event{{ '' if rows|length == 1 else 's' }} <small>Newest first. Score = the model's spoof probability (0 = real, 1 = spoof).</small></div>
+        <div class="ui-table-wrap">
+            <table class="ui-table">
+                <thead><tr><th>Time (UTC)</th><th>Decision</th><th class="num">Frame score</th><th class="num">5-frame average</th><th>Test label</th></tr></thead>
+                <tbody>
+                {% for r in rows %}
+                    <tr>
+                        <td style="white-space:nowrap;">{{ r['created_at'] }}</td>
+                        <td><span class="ui-badge {{ 'bad' if r['stage'] == 'SPOOF' else 'unsure' }}">{{ r['stage'] }}</span></td>
+                        <td class="num">{{ '%.4f'|format(r['p_spoof_frame']) if r['p_spoof_frame'] is not none else '—' }}</td>
+                        <td class="num">{{ '%.4f'|format(r['p_spoof_avg']) if r['p_spoof_avg'] is not none else '—' }}</td>
+                        <td>{{ r['test_label'] or '' }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="ui-empty">No SPOOF or UNCERTAIN events match these filters.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

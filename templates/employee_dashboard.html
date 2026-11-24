@@ -4,107 +4,50 @@
 {% block page_subtitle %}Your personal attendance dashboard{% endblock %}
 
 {% block content %}
-{% if not user['face_registered'] %}
-<!-- Face not registered yet -->
-<div class="glass-card" style="margin-bottom:1.25rem; border:1px solid var(--accent-gold);">
-    <div class="glass-card-body" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-        <div style="display:flex; align-items:center; gap:0.85rem;">
-            <i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem; color:var(--accent-gold);"></i>
-            <div style="font-size:1rem; font-weight:700; color:var(--text-primary);">Register your face to start marking attendance</div>
-        </div>
-        <button type="button" onclick="openEnrollment()" style="padding:0.6rem 1.2rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; font-family:inherit;">
-            <i class="fa-solid fa-camera"></i> Register Face
-        </button>
+<div class="ui-page">
+    {% if not user['face_registered'] %}
+    <div class="ui-card" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; border-color:rgba(245,158,11,.45);">
+        <div style="font-weight:700;">Register your face to start marking attendance</div>
+        <button type="button" class="ui-btn primary" onclick="openEnrollment()"><i class="fa-solid fa-camera"></i> Register face</button>
     </div>
-</div>
-{% endif %}
-<!-- Today's Status -->
-{% if today_status %}
-<div class="today-status-card {% if today_status.status == 'Late' %}late-check{% elif today_status.status == 'Present' %}checked-in{% else %}not-checked{% endif %}">
-    <div style="display:flex; align-items:center; justify-content:center; gap:1rem;">
-        <i class="fa-solid fa-{% if today_status.status == 'Late' %}clock{% else %}circle-check{% endif %}" style="font-size:1.8rem; color:{% if today_status.status == 'Late' %}var(--accent-gold){% else %}var(--accent-emerald){% endif %};"></i>
-        <div style="text-align:left;">
-            <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">{% if today_status.status in ('Present', 'Late') %}Checked in at {{ today_status.time[:5] }}{% else %}{{ today_status.status }} today{% endif %}</div>
-            <div style="font-size:0.78rem; color:var(--text-secondary);">Status: <span style="color:{% if today_status.status == 'Late' %}var(--accent-gold){% else %}var(--accent-emerald){% endif %}; font-weight:700;">{{ today_status.status }}</span></div>
-        </div>
-    </div>
-</div>
-{% else %}
-<div class="today-status-card not-checked">
-    <div style="display:flex; align-items:center; justify-content:center; gap:1rem;">
-        <i class="fa-solid fa-triangle-exclamation" style="font-size:1.8rem; color:var(--accent-gold);"></i>
-        <div style="text-align:left;">
-            <div style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Not Checked In Yet</div>
-            <div style="font-size:0.78rem; color:var(--text-secondary);"><a href="{{ url_for('home') }}">Open the attendance scanner &rarr;</a></div>
-        </div>
-    </div>
-</div>
-{% endif %}
+    {% endif %}
 
-<!-- Stats Row -->
-<div class="stats-grid" style="margin-bottom:1.25rem;">
-    <div class="stat-card">
-        <div class="stat-card-header">
-            <div class="stat-icon emerald"><i class="fa-solid fa-calendar-check"></i></div>
-            <span class="stat-title">Present</span>
+    <div class="ui-card" style="display:flex; align-items:center; gap:1rem;">
+        {% if today_status and today_status.status in ('Present', 'Late') %}
+        <i class="fa-solid fa-circle-check" style="font-size:2rem; color:{{ 'var(--ui-late)' if today_status.status == 'Late' else 'var(--ui-good)' }};"></i>
+        <div>
+            <div style="font-size:1.15rem; font-weight:800;">Checked in today at {{ today_status.time[:5] }}</div>
+            <div class="ui-hint">Status: <span class="ui-badge {{ 'late' if today_status.status == 'Late' else 'good' }}">{{ today_status.status }}</span></div>
         </div>
-        <div class="stat-value">{{ days_present_total }}</div>
-        <div class="stat-trend">Present: {{ days_present_total }}, of which Late: {{ late_days }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-card-header">
-            <div class="stat-icon gold"><i class="fa-solid fa-clock"></i></div>
-            <span class="stat-title">Late Arrivals</span>
+        {% elif today_status %}
+        <i class="fa-solid fa-circle-info" style="font-size:2rem; color:var(--text-secondary);"></i>
+        <div><div style="font-size:1.15rem; font-weight:800;">Today: {{ today_status.status }}</div></div>
+        {% else %}
+        <i class="fa-regular fa-clock" style="font-size:2rem; color:var(--text-muted);"></i>
+        <div>
+            <div style="font-size:1.15rem; font-weight:800;">Not checked in yet today</div>
+            <div class="ui-hint">Use the attendance scanner to check in.</div>
         </div>
-        <div class="stat-value">{{ late_days }}</div>
-        <div class="stat-trend"><span class="trend-badge {% if late_days > 3 %}down{% else %}up{% endif %}">{{ late_days }}</span> total</div>
+        {% endif %}
     </div>
-    <div class="stat-card">
-        <div class="stat-card-header">
-            <div class="stat-icon" style="background:rgba(56, 189, 248, 0.2); color:#38bdf8;"><i class="fa-solid fa-plane-departure"></i></div>
-            <span class="stat-title">Days on Leave</span>
-        </div>
-        <div class="stat-value">{{ chart_data.Leave }}</div>
-        <div class="stat-trend"><span class="trend-badge neutral">{{ chart_data.Leave }}</span> approved</div>
+
+    <div class="ui-stats">
+        <div class="ui-stat good"><div class="ui-stat-label">Present</div><div class="ui-stat-value">{{ days_present_total }}</div><div class="ui-stat-note">Includes late days</div></div>
+        <div class="ui-stat late"><div class="ui-stat-label">Late</div><div class="ui-stat-value">{{ late_days }}</div><div class="ui-stat-note">Late counts as present</div></div>
+        <div class="ui-stat {% if chart_data.Absent %}bad{% endif %}"><div class="ui-stat-label">Absent</div><div class="ui-stat-value">{{ chart_data.Absent }}</div><div class="ui-stat-note">Days recorded as absent</div></div>
     </div>
-    <div class="stat-card">
-        <div class="stat-card-header">
-            <div class="stat-icon {% if user['face_registered'] %}emerald{% else %}gold{% endif %}">
-                <i class="fa-solid fa-{% if user['face_registered'] %}fingerprint{% else %}exclamation-triangle{% endif %}"></i>
+
+    <div class="ui-grid-2">
+        <div class="ui-card">
+            <div class="ui-card-title">
+                {{ selected_month.strftime('%B %Y') }}
+                <form method="get" class="ui-filters">
+                    <input type="month" id="month" name="month" value="{{ selected_month.isoformat()[:7] }}" max="{{ current_month }}" required aria-label="Month">
+                    <button type="submit" class="ui-btn" style="padding:.4rem .8rem;">View</button>
+                </form>
             </div>
-            <span class="stat-title">Biometric</span>
-        </div>
-        <div class="stat-value" style="font-size:1.2rem;">{% if user['face_registered'] %}Active{% else %}Pending{% endif %}</div>
-        <div class="stat-trend">
-            {% if user['face_registered'] %}
-            <span class="trend-badge up">Enrolled</span>
-            {% else %}
-            <span class="trend-badge neutral">Setup Required</span>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<div class="dashboard-grid">
-    <!-- Calendar Heatmap + Chart -->
-    <div class="glass-card">
-        <div class="glass-card-header">
-            <span class="glass-card-title"><i class="fa-solid fa-calendar-days"></i> {{ selected_month.strftime('%B %Y') }}</span>
-        </div>
-        <div class="glass-card-body">
-            <form method="get" class="calendar-picker">
-                <label for="month">Attendance month</label>
-                <input type="month" id="month" name="month" value="{{ selected_month.isoformat()[:7] }}" max="{{ current_month }}" required>
-                <button type="submit">View</button>
-            </form>
             <div class="calendar-grid" id="calendarGrid">
-                <div class="calendar-header">Mon</div>
-                <div class="calendar-header">Tue</div>
-                <div class="calendar-header">Wed</div>
-                <div class="calendar-header">Thu</div>
-                <div class="calendar-header">Fri</div>
-                <div class="calendar-header">Sat</div>
-                <div class="calendar-header">Sun</div>
+                {% for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<div class="calendar-header">{{ d }}</div>{% endfor %}
                 {% for _ in range(selected_month.weekday()) %}<div class="calendar-day empty" aria-hidden="true"></div>{% endfor %}
                 {% for day in range(1, days_in_month + 1) %}
                 {% set key = selected_month.replace(day=day).isoformat() %}
@@ -114,122 +57,51 @@
                       class="calendar-day {{ status|lower if status else 'no-data' }}{{ ' today' if key == today }}">{{ day }}</time>
                 {% endfor %}
             </div>
-            <div style="margin-top:1rem; display:flex; gap:1rem; justify-content:center; flex-wrap: wrap;">
-                <div style="display:flex; align-items:center; gap:0.3rem; font-size:0.65rem; color:var(--text-muted);"><span style="width:10px; height:10px; border-radius:3px; background:rgba(16,185,129,0.3);"></span> Present</div>
-                <div style="display:flex; align-items:center; gap:0.3rem; font-size:0.65rem; color:var(--text-muted);"><span style="width:10px; height:10px; border-radius:3px; background:rgba(245,158,11,0.3);"></span> Late</div>
-                <div style="display:flex; align-items:center; gap:0.3rem; font-size:0.65rem; color:var(--text-muted);"><span style="width:10px; height:10px; border-radius:3px; background:rgba(244,63,94,0.3);"></span> Absent</div>
-                <div style="display:flex; align-items:center; gap:0.3rem; font-size:0.65rem; color:var(--text-muted);"><span style="width:10px; height:10px; border-radius:3px; background:rgba(139,92,246,0.3);"></span> Leave</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Identity Card + Chart -->
-    <div style="display:flex; flex-direction:column; gap:0.85rem;">
-        <!-- Identity Card -->
-        <div class="glass-card">
-            <div class="glass-card-header">
-                <span class="glass-card-title"><i class="fa-solid fa-id-card"></i> Identity</span>
-            </div>
-            <div class="glass-card-body">
-                <div style="display:flex; align-items:center; gap:1.15rem; margin-bottom:1rem;">
-                    <div style="width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg, var(--accent-emerald), var(--accent-cyan)); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.1rem; color:#fff; flex-shrink:0; border:2px solid rgba(16,185,129,0.2); box-shadow:0 0 15px var(--accent-emerald-glow);">
-                        {{ user['name'][0:2] | upper }}
-                    </div>
-                    <div>
-                        <div style="font-size:1.05rem; font-weight:700; color:var(--text-primary);">{{ user['name'] }}</div>
-                        <div style="font-size:0.72rem; color:var(--accent-cyan); font-family:monospace; font-weight:600;">{{ user['employee_id'] }}</div>
-                        <div style="font-size:0.7rem; color:var(--text-muted);">{{ user['department'] }}</div>
-                    </div>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-                    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:0.55rem;">
-                        <div style="font-size:0.6rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:2px;">Email</div>
-                        <div style="font-size:0.75rem; color:var(--text-primary); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ user['email'] }}</div>
-                    </div>
-                    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:0.55rem;">
-                        <div style="font-size:0.6rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:2px;">Face Scan</div>
-                        <div style="font-size:0.75rem; font-weight:500;">
-                            {% if user['face_registered'] %}
-                            <span style="color:var(--accent-emerald);"><i class="fa-solid fa-circle-check"></i> Trained</span>
-                            {% else %}
-                            <span style="color:var(--accent-gold);"><i class="fa-solid fa-triangle-exclamation"></i> Pending</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                {% if not user['face_registered'] %}
-                <button onclick="openEnrollment()" style="margin-top:0.85rem; width:100%; padding:0.65rem; background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; border:none; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s; box-shadow:0 4px 15px rgba(16,185,129,0.2);">
-                    <i class="fa-solid fa-camera"></i> Register Biometrics
-                </button>
-                {% endif %}
+            <div class="ui-legend" style="margin-top:.85rem; justify-content:center;">
+                <span><i style="background:rgba(16,185,129,.55)"></i> Present</span>
+                <span><i style="background:rgba(245,158,11,.55)"></i> Late</span>
+                <span><i style="background:rgba(244,63,94,.55)"></i> Absent</span>
             </div>
         </div>
 
-        <!-- Doughnut Chart -->
-        <div class="glass-card">
-            <div class="glass-card-header">
-                <span class="glass-card-title"><i class="fa-solid fa-chart-pie"></i> Distribution</span>
-            </div>
-            <div class="glass-card-body distribution">
-                {% set total = chart_data.values()|sum %}
-                {% if total %}
-                {% for label, count in chart_data.items() %}
-                <div><span>{{ label }}</span><meter aria-label="{{ label }} days" min="0" max="{{ total }}" value="{{ count }}"></meter><strong>{{ count }}</strong></div>
-                {% endfor %}
-                {% else %}<p>No attendance recorded yet.</p>{% endif %}
+        <div class="ui-card flush">
+            <div class="ui-card-title">Recent attendance</div>
+            <div class="ui-table-wrap">
+                <table class="ui-table">
+                    <thead><tr><th>Date</th><th>Time</th><th>Status</th></tr></thead>
+                    <tbody>
+                    {% for record in history[:12] %}
+                        <tr>
+                            <td class="strong">{{ record['date'] }}</td>
+                            <td>{{ record['time'][:5] }}</td>
+                            <td><span class="ui-badge {% if record['status'] == 'Present' %}good{% elif record['status'] == 'Late' %}late{% elif record['status'] == 'Absent' %}bad{% else %}muted{% endif %}">{{ record['status'] }}</span></td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="3" class="ui-empty">No attendance yet.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Recent Attendance Table -->
-<div class="glass-card" style="margin-top:0.85rem;">
-    <div class="glass-card-header">
-        <span class="glass-card-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Attendance</span>
-    </div>
-    <div class="glass-card-body" style="padding:0;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Check-in Time</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for record in history[:15] %}
-                <tr>
-                    <td style="font-weight:600; color:var(--text-primary); font-size:0.8rem;">{{ record['date'] }}</td>
-                    <td style="font-family:monospace; font-size:0.8rem;">{{ record['time'] }}</td>
-                    <td>
-                        <span class="status-badge {% if record['status'] == 'Late' %}late{% elif record['status'] == 'Absent' %}absent{% elif record['status'] == 'Leave' %}leave{% else %}checked-in{% endif %}">
-                            {{ record['status'] }}
-                        </span>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="3" style="text-align:center; padding:2rem; color:var(--text-muted);">No records found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<dialog id="faceModal" aria-labelledby="enrollTitle" class="enrollment-dialog">
-    <h2 id="enrollTitle">Register your face</h2>
-    <p>Look directly at the camera in even light.</p>
-    <div class="enrollment-preview">
+<dialog id="faceModal" aria-labelledby="enrollTitle" class="enrollment-dialog" style="width:min(92vw, 400px);">
+    <h2 id="enrollTitle" style="font-size:1.2rem;">Register your face</h2>
+    <div class="face-view small" style="margin:1rem auto;">
         <video id="videoElement" autoplay muted playsinline></video>
+        <canvas id="enrollView" width="400" height="400"></canvas>
+        <div class="face-view-idle" id="enrollIdle">Camera off</div>
     </div>
-    <label for="sampleProgress" id="sampleCounter">Saved samples</label>
-    <progress id="sampleProgress" max="{{ min_face_samples }}" value="0"></progress>
-    <p id="regInstruction" role="status" aria-live="polite"></p>
-    <div class="enrollment-actions">
-        <button type="button" onclick="closeEnrollment()">Close</button>
-        <a hidden id="goToScanner" class="btn-primary" href="{{ url_for('home') }}">Open scanner &rarr;</a>
+    <div style="display:flex; justify-content:space-between; font-size:.82rem; font-weight:600; margin-bottom:.35rem;">
+        <span>Progress</span><span id="sampleCounter">0 of {{ min_face_samples }}</span>
+    </div>
+    <progress id="sampleProgress" max="{{ min_face_samples }}" value="0" style="width:100%;"></progress>
+    <p id="regInstruction" role="status" aria-live="polite" style="margin:.8rem 0; min-height:1.4em; color:var(--text-primary);"></p>
+    <div style="display:flex; gap:.6rem; justify-content:flex-end;">
+        <button type="button" class="ui-btn" id="enrollRetry" hidden onclick="openEnrollment(true)">Try again</button>
+        <button type="button" class="ui-btn" onclick="closeEnrollment()">Close</button>
+        <a hidden id="goToScanner" class="ui-btn primary" href="{{ url_for('home') }}">Open scanner</a>
     </div>
 </dialog>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
@@ -239,77 +111,85 @@
     const progress = document.getElementById('sampleProgress');
     const counter = document.getElementById('sampleCounter');
     const scannerLink = document.getElementById('goToScanner');
+    const retryBtn = document.getElementById('enrollRetry');
+    const idle = document.getElementById('enrollIdle');
     const enrollmentVideo = document.getElementById('videoElement');
-    let captureSession = 0;
-    let captureTimer;
-    let complete = false;
+    const view = createFaceView('videoElement', 'enrollView');
+    let captureSession = 0, captureTimer, complete = false;
 
-    function closeEnrollment() { faceModal.close(); }
-    faceModal.addEventListener('close', () => {
+    function setProgress(saved, required) {
+        progress.max = required;
+        progress.value = Math.min(saved, required);
+        counter.textContent = Math.min(saved, required) + ' of ' + required;
+    }
+    function cameraOff(message) {
         captureSession++;
         clearTimeout(captureTimer);
         stopCamera();
         enrollmentVideo.srcObject = null;
+        view.stop();
+        idle.hidden = false;
+        idle.textContent = complete ? 'Done' : 'Camera off';
+        if (message) instruction.textContent = message;
+    }
+    function closeEnrollment() { faceModal.close(); }
+    faceModal.addEventListener('close', () => {
+        cameraOff();
         if (complete) location.reload();
     });
 
-    async function openEnrollment() {
-        if (faceModal.open) return;
-        faceModal.showModal();
-        const sessionId = ++captureSession;
+    async function openEnrollment(retry) {
+        if (!faceModal.open) faceModal.showModal();
+        else if (!retry) return;
+        cameraOff();
+        const sessionId = captureSession;
         complete = false;
         scannerLink.hidden = true;
-        counter.textContent = 'Saved samples';
-        progress.removeAttribute('value');
+        retryBtn.hidden = true;
         instruction.textContent = 'Opening camera…';
         await startCamera('videoElement', false);
         if (sessionId !== captureSession || !faceModal.open) return;
         if (!enrollmentVideo.srcObject?.active) {
-            instruction.textContent = 'Camera unavailable. Allow camera access in your browser to enroll.';
+            instruction.textContent = 'Camera unavailable. Allow camera access, then press Try again.';
+            retryBtn.hidden = false;
             return;
         }
-        instruction.textContent = 'Hold still for the first sample.';
-        captureSample(sessionId);
+        idle.hidden = true;
+        view.start();
+        instruction.textContent = 'Look at the camera. Only you should be in the picture.';
+        captureTimer = setTimeout(() => captureSample(sessionId), 600);
     }
 
     async function captureSample(sessionId) {
         const image = captureFrame('videoElement');
-        if (!image) {
-            instruction.textContent = 'Camera disconnected. Close enrollment and check your camera.';
-            stopCamera();
-            return;
-        }
+        if (!image) { cameraOff('Camera disconnected.'); retryBtn.hidden = false; return; }
         try {
             const response = await fetch("{{ url_for('api_register_face') }}", {
-                method: 'POST', headers: {'Content-Type':'application/json'},
+                method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({image}), signal: AbortSignal.timeout(15000)
             });
             const result = await response.json();
             if (sessionId !== captureSession || !faceModal.open) return;
             if (result.success) {
-                progress.max = result.required;
-                progress.value = Math.min(result.saved, result.required);
-                counter.textContent = progress.value + ' of ' + result.required + ' samples saved';
+                setProgress(result.saved, result.required);
                 if (result.complete) {
                     complete = true;
-                    stopCamera();
-                    enrollmentVideo.srcObject = null;
-                    instruction.textContent = 'Face registered. You can now check in.';
+                    cameraOff('Face registered. You can now check in at the scanner.');
                     scannerLink.hidden = false;
                     return;
                 }
-                instruction.textContent = 'Sample saved. Turn your head slightly for the next one.';
+                instruction.textContent = 'Saved. Turn your head slightly for the next one.';
+            } else if (response.status === 400 && !result.identity_rejected) {
+                instruction.textContent = 'No face found. Look straight at the camera.';
             } else {
-                instruction.textContent = result.msg || 'The sample could not be saved.';
-                if (response.status !== 400 || result.identity_rejected) {
-                    stopCamera();
-                    return;
-                }
+                cameraOff(result.msg || 'This sample could not be saved.');
+                retryBtn.hidden = false;
+                return;
             }
         } catch {
             if (sessionId !== captureSession || !faceModal.open) return;
-            instruction.textContent = 'The server did not confirm this sample. Close enrollment and check the connection.';
-            stopCamera();
+            cameraOff('The server did not answer. Press Try again.');
+            retryBtn.hidden = false;
             return;
         }
         captureTimer = setTimeout(() => captureSample(sessionId), 1000);

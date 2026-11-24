@@ -1,121 +1,73 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}"><title>Attendance scanner · SecureFace</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/fx.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/scanner.css') }}"></head>
 <body>
 <header class="mast">
-<a class="brand" href="/"><span class="brand-icon" aria-hidden="true"></span><span class="brand-text">SecureFace<small>Attendance station</small></span></a>
-<div class="mast-clock" aria-label="Current time"><span id="stationClock">--:--</span><time id="stationDate"></time></div>
-<nav aria-label="Main navigation"><a href="{{ url_for('how_it_works') }}">Guide</a>
-{% if session.get('role') == 'employee' %}<a class="admin" href="{{ url_for('employee_dashboard') }}">Dashboard &#8599;</a>{% else %}<a class="admin" href="{{ url_for('admin_login') }}">Admin &#8599;</a>{% endif %}</nav></header>
-<main id="scanner" data-approved="{{ approved|int }}" data-enrolled="{{ enrolled|int }}">
-<h1 class="sr-only">Attendance scanner</h1>
-<section class="surface" aria-label="Attendance scanner" data-camera="off">
-<div class="studio">
-<div class="studio-tools"><span class="camera-tag" id="cameraTag">Camera off</span><span class="station-name">Face check-in</span><button hidden type="button" id="fullscreen">Full screen</button></div>
-<div class="field">
-<div class="grid-plane" aria-hidden="true"></div>
-<div class="portal">
-<svg class="rings" viewBox="0 0 400 400" aria-hidden="true">
-<circle class="ring-ticks" cx="200" cy="200" r="192"/>
-<circle class="ring-track" cx="200" cy="200" r="172"/>
-<circle class="ring-progress" cx="200" cy="200" r="172" pathLength="100"/>
-<g class="ring-arcs"><circle cx="200" cy="200" r="182"/></g>
-<g class="ring-orbit"><circle cx="200" cy="8" r="4"/></g>
-</svg>
-<div class="viewfinder">
-<div class="portrait" id="portrait"><video hidden autoplay muted playsinline id="scanVideo"></video>
-<canvas id="preview" width="320" height="380" aria-label="Cropped camera preview"></canvas>
-<svg class="silhouette" viewBox="0 0 320 380" aria-hidden="true"><path d="M160 70c-44 0-74 34-74 84 0 34 13 64 32 82 12 11 26 18 42 18s30-7 42-18c19-18 32-48 32-82 0-50-30-84-74-84z"/><path d="M46 380c6-58 44-92 86-104 9 8 18 12 28 12s19-4 28-12c42 12 80 46 86 104"/><g class="dots"><circle cx="128" cy="150" r="3"/><circle cx="192" cy="150" r="3"/><circle cx="160" cy="186" r="3"/><circle cx="138" cy="214" r="3"/><circle cx="182" cy="214" r="3"/></g></svg>
-<div class="reticle" aria-hidden="true"><i></i></div><i class="sweep" aria-hidden="true"></i></div>
-</div>
-</div>
-</div>
-<ol class="steps" aria-label="Check-in progress"><li>Position</li><li>Verify</li><li>Check in</li></ol>
-</div>
-<div class="controls">
-<div class="state-mark" aria-hidden="true">
-<svg class="si si-idle" viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 20c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg>
-<svg class="si si-search" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="11" r="3"/><path d="M7 18c1-2 3-3 5-3s4 1 5 3"/></svg>
-<svg class="si si-check" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-<svg class="si si-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/></svg>
-<svg class="si si-block" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></svg>
-</div>
-<div class="panel-label">Scanner status</div>
-<div class="feedback" role="status" aria-live="polite" aria-atomic="true"><h2 id="title">{{ 'Device approval required' if not approved else ('Enroll your face' if not enrolled else 'Look at the camera') }}</h2>
-<p id="description">{% if not approved %}{{ approval_message }} Approve this browser in Admin &rarr; Settings &rarr; Scanner Devices.{% elif not enrolled %}No faces are enrolled on this laptop yet. Sign in and choose Register Face to get started.{% else %}Center your face inside the frame and blink naturally.{% endif %}</p></div>
-<div class="actions">
-{% if session.get('role') == 'admin' %}
-<a class="primary" href="{{ url_for('logout', enroll='1') }}">Sign out to register your face <span aria-hidden="true">&rarr;</span></a>
-<a href="{{ url_for('settings') }}">Scanner settings</a>
-{% else %}
-<a class="primary" href="{{ url_for('login', enroll='1') }}">Register your face <span aria-hidden="true">&rarr;</span></a>
-{% if session.get('user_id') %}<a href="{{ url_for('logout') }}">Sign out</a>{% else %}<a href="{{ url_for('register', enroll='1') }}">Create account</a>{% endif %}
-{% endif %}</div>
-<ul class="tips" aria-label="Tips for a quick check-in">
-<li><span class="tip-ico" aria-hidden="true">&#9728;</span><div><b>Face the light</b><small>Light on your face, not behind you.</small></div></li>
-<li><span class="tip-ico" aria-hidden="true">&#9673;</span><div><b>Look straight ahead</b><small>Keep your whole face inside the oval.</small></div></li>
-<li><span class="tip-ico" aria-hidden="true">&#9737;</span><div><b>Blink once</b><small>A natural blink finishes the check.</small></div></li>
-</ul>
-</div></section>
-<output hidden id="debug"></output>
-    {% if debug_mode %}
-    <!-- Dev-only test-category label (FLASK_DEBUG=1 only). Purely descriptive --
-         tags each scan_events row with what's being shown to the camera for this
-         test run. Never read by the liveness/recognition pipeline. -->
-    <div style="position:absolute; bottom:12px; left:12px; z-index:16; max-width:140px;
-                background:rgba(0,0,0,0.75); backdrop-filter:blur(10px); border:1px solid rgba(245,158,11,0.3);
-                border-radius:8px; padding:5px 8px; font-family:'JetBrains Mono','Consolas',monospace;
-                font-size:0.58rem; color:#f59e0b; display:flex; flex-direction:column; gap:3px;">
-        <span style="font-weight:700;">TEST LABEL</span>
-        <select id="testLabelSelect" style="background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:2px 4px; font-family:inherit; font-size:0.6rem; max-width:128px;">
-            <option value="">(none)</option>
-            <option value="real_face">Real face</option>
-            <option value="real_face_masked">Real face (masked)</option>
-            <option value="printed_photo">Printed photo</option>
-            <option value="printed_photo_masked">Printed photo (masked)</option>
-            <option value="phone_photo">Phone photo</option>
-            <option value="phone_video">Phone video</option>
-            <option value="laptop_screen">Laptop screen</option>
-            <option value="other">Other (custom)</option>
-        </select>
-        <input type="text" id="testLabelCustom" placeholder="custom label" maxlength="40"
-               style="display:none; background:#111; color:#e2e8f0; border:1px solid rgba(245,158,11,0.3); border-radius:5px; padding:2px 4px; font-family:inherit; font-size:0.6rem; max-width:128px;">
-    </div>
-    <script>
-        (function() {
-            const sel = document.getElementById('testLabelSelect');
-            const custom = document.getElementById('testLabelCustom');
-            const KEY = 'devTestLabel';
-            try {
-                const saved = localStorage.getItem(KEY) || '';
-                if (saved && !Array.from(sel.options).some(o => o.value === saved)) {
-                    sel.value = 'other'; custom.value = saved; custom.style.display = 'inline-block';
-                } else {
-                    sel.value = saved;
-                }
-            } catch (e) {}
-            function currentLabel() {
-                return sel.value === 'other' ? custom.value.trim() : sel.value;
-            }
-            window.getDevTestLabel = currentLabel;
-            sel.addEventListener('change', () => {
-                custom.style.display = sel.value === 'other' ? 'inline-block' : 'none';
-                try { localStorage.setItem(KEY, currentLabel()); } catch (e) {}
-            });
-            custom.addEventListener('input', () => {
-                try { localStorage.setItem(KEY, currentLabel()); } catch (e) {}
-            });
-        })();
-    </script>
-    {% endif %}
+    <a class="brand" href="{{ url_for('home') }}">SecureFace <small>Attendance</small></a>
+    <span class="clock" id="stationClock">--:--</span>
+    <nav>
+        {% if session.get('role') == 'employee' %}<a href="{{ url_for('employee_dashboard') }}">My dashboard</a>
+        {% elif session.get('role') == 'admin' %}<a href="{{ url_for('admin_dashboard') }}">Admin</a>
+        {% else %}<a href="{{ url_for('login') }}">Sign in</a>{% endif %}
+    </nav>
+</header>
 
+<main id="scanner" data-approved="{{ approved|int }}" data-enrolled="{{ enrolled|int }}">
+    <h1 class="sr-only">Attendance scanner</h1>
+    <div class="face-view" id="faceView">
+        <video id="scanVideo" autoplay muted playsinline></video>
+        <canvas id="preview" width="480" height="480" aria-label="Camera view"></canvas>
+        <div class="face-view-idle" id="idle">Camera off</div>
+    </div>
+
+    <div class="status" id="status" data-state="idle" role="status" aria-live="polite">
+        {% if not approved %}{{ approval_message }}
+        {% elif not enrolled %}No student has registered a face yet.
+        {% else %}Starting camera…{% endif %}
+    </div>
+
+    <div class="result" id="result" hidden>
+        <div class="result-msg" id="resultMsg"></div>
+        <div class="result-name" id="resultName"></div>
+        <div class="result-id" id="resultId"></div>
+    </div>
 </main>
-<script src="{{ url_for('static',filename='js/csrf.js') }}"></script><script src="{{ url_for('static',filename='js/camera.js') }}"></script>
-<script src="{{ url_for('static',filename='js/scanner.js') }}"></script>
-<script src="{{ url_for('static',filename='js/fx.js') }}" defer></script><script>
-(function(){var c=document.getElementById("stationClock"),d=document.getElementById("stationDate");
-function tick(){var n=new Date();c.textContent=n.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});d.textContent=n.toLocaleDateString([], {weekday:"long",day:"numeric",month:"long"});d.dateTime=n.toISOString().slice(0,10);}
-tick();setInterval(tick,1000);})();
-</script></body></html>
+<output hidden id="debug"></output>
+
+{% if debug_mode %}
+<!-- Dev-only test-category label (FLASK_DEBUG=1 only). Descriptive tag stored on
+     scan_events rows; never read by the liveness/recognition pipeline. -->
+<label class="dev-label">Test label
+    <select id="testLabelSelect">
+        <option value="">(none)</option>
+        <option value="real_face">Real face</option>
+        <option value="real_face_masked">Real face (masked)</option>
+        <option value="printed_photo">Printed photo</option>
+        <option value="phone_photo">Phone photo</option>
+        <option value="phone_video">Phone video</option>
+        <option value="laptop_screen">Laptop screen</option>
+    </select>
+</label>
+<script>
+(function () {
+    const sel = document.getElementById('testLabelSelect');
+    try { sel.value = localStorage.getItem('devTestLabel') || ''; } catch (e) {}
+    window.getDevTestLabel = () => sel.value;
+    sel.addEventListener('change', () => { try { localStorage.setItem('devTestLabel', sel.value); } catch (e) {} });
+})();
+</script>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script>
+(function () {
+    const c = document.getElementById('stationClock');
+    const tick = () => { c.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+    tick(); setInterval(tick, 1000);
+})();
+</script>
+</body></html>

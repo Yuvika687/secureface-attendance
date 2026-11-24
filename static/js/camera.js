@@ -55,6 +55,70 @@ function captureFrame(videoElementId) {
     return canvas.toDataURL('image/jpeg', 0.85);
 }
 
+/* Face view (display only). Paints a square, zoomed crop of the live camera onto a
+   canvas, centred on the last face box the server returned, and draws that box on
+   top. The video element itself stays hidden; captureFrame() still sends the FULL
+   camera frame to the server, so detection and liveness see exactly what they did
+   before. Box coords arrive in the captured frame's pixels (face_box.frame_width/
+   frame_height) and are mapped through the same crop, then mirrored like a selfie. */
+function createFaceView(videoElementId, canvasElementId) {
+    const video = document.getElementById(videoElementId);
+    const canvas = document.getElementById(canvasElementId);
+    const ctx = canvas.getContext('2d');
+    const ZOOM = 1.9;            // crop side = 1.9 x the face size, so the face fills most of the view
+    let box = null, color = '#10b981', label = '', running = false, crop = null;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    function targetCrop(w, h) {
+        let side = Math.min(w, h), cx = w / 2, cy = h / 2;      // no face: widest square view
+        if (box && box.frame_width) {
+            const k = w / box.frame_width;
+            cx = (box.x + box.width / 2) * k;
+            cy = (box.y + box.height / 2) * k;
+            side = Math.max(box.width, box.height) * k * ZOOM;
+        }
+        side = clamp(side, Math.min(w, h) * 0.35, Math.min(w, h));
+        return { x: clamp(cx - side / 2, 0, w - side), y: clamp(cy - side / 2, 0, h - side), s: side };
+    }
+
+    function paint() {
+        if (!running) return;
+        const w = video.videoWidth, h = video.videoHeight;
+        if (w && h && video.readyState >= 2) {
+            const t = targetCrop(w, h);
+            crop = crop ? { x: crop.x + (t.x - crop.x) * 0.2, y: crop.y + (t.y - crop.y) * 0.2, s: crop.s + (t.s - crop.s) * 0.2 } : t;
+            const W = canvas.width, H = canvas.height;
+            ctx.save();
+            ctx.translate(W, 0); ctx.scale(-1, 1);              // mirror like a selfie camera
+            ctx.drawImage(video, crop.x, crop.y, crop.s, crop.s, 0, 0, W, H);
+            ctx.restore();
+            if (box && box.frame_width) {
+                const k = w / box.frame_width, f = W / crop.s;
+                const bw = box.width * k * f, bh = box.height * k * f;
+                const bx = W - ((box.x * k - crop.x) * f + bw);  // mirrored x
+                const by = (box.y * k - crop.y) * f;
+                ctx.strokeStyle = color; ctx.lineWidth = 3;
+                ctx.strokeRect(bx, by, bw, bh);
+                if (label) {
+                    ctx.font = '600 14px Inter, sans-serif';
+                    const tw = ctx.measureText(label).width + 12;
+                    const ly = by > 24 ? by - 24 : by + bh;
+                    ctx.fillStyle = color; ctx.fillRect(bx, ly, tw, 24);
+                    ctx.fillStyle = '#04110c'; ctx.fillText(label, bx + 6, ly + 17);
+                }
+            }
+        }
+        requestAnimationFrame(paint);
+    }
+
+    return {
+        start() { if (!running) { running = true; crop = null; paint(); } },
+        stop() { running = false; box = null; crop = null; ctx.clearRect(0, 0, canvas.width, canvas.height); },
+        freeze() { running = false; },   // keep showing the last painted frame (call before stopping the camera)
+        setBox(faceBox, boxColor, boxLabel) { box = faceBox || null; if (boxColor) color = boxColor; label = boxLabel || ''; },
+    };
+}
+
 async function sendFaceToAPI(endpoint, base64Image, btnElement) {
     const originalText = btnElement.innerHTML;
     btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';

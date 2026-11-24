@@ -1,0 +1,4 @@
+<nav class="ui-tabs" aria-label="Logs">
+    <a href="{{ url_for('admin_spoof_log') }}" class="{% if request.endpoint == 'admin_spoof_log' %}active{% endif %}">Spoof Log</a>
+    <a href="{{ url_for('admin_scan_log') }}" class="{% if request.endpoint == 'admin_scan_log' %}active{% endif %}">Scan Log</a>
+</nav>

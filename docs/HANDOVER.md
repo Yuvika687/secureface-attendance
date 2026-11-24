@@ -11,7 +11,7 @@ load-bearing; code changes after this date are not reflected.
 
 A face-recognition attendance system for students with a **self-trained liveness
 (anti-spoofing) model** in front of recognition. A student stands in front of the
-**common scanner** (an admin-approved device). The system:
+**common scanner** (any device, or only admin-approved ones if that setting is on). The system:
 
 1. Checks the face is a real, live person, not a photo, phone or screen (trained MobileNetV3-Small).
 2. Recognizes who it is (ArcFace).
@@ -49,13 +49,14 @@ cd /Users/yuvikamalhotra/Documents/project/secureface-attendance
 ./venv/bin/python app.py                            # http://localhost:5000
 FLASK_DEBUG=1 ./venv/bin/python app.py              # + dev tools (scanner test-label dropdown,
                                                     #   /admin/dev/clear_today_attendance)
-./venv/bin/pytest -v                                # 67 tests (pytest.ini: testpaths = tests)
+./venv/bin/pytest -v                                # 73 tests (pytest.ini: testpaths = tests)
 ```
 
-**After the first start, approve a scanner.** Log in as admin on the scanner computer →
-Settings → Scanner Devices → **Set this device as scanner**. Until then `/` returns 403
-"This device is not an approved scanner." The approval is a cookie for one host name,
-so `localhost` and an ngrok URL each need their own approval.
+**Scanner approval is optional (off by default).** Settings → Scanner → "Require approved
+scanner device". When it is on, log in as admin on each scanner computer → Settings →
+**Set this device as scanner**; other devices see "This device is not an approved scanner."
+The approval is a cookie for one host name, so `localhost` and an ngrok URL each need
+their own approval.
 
 - Port 5000 can collide with macOS AirPlay Receiver (`lsof -ti:5000 | xargs kill -9`).
 - Camera access works on `http://localhost` without HTTPS. For other devices use ngrok
@@ -80,8 +81,9 @@ copies of the real DB. The real `database/smartface.db` gets these on its next s
 
 ### Scan pipeline (`app.py` → `api_recognize_face()`)
 
-1. **Device check:** `_current_scanner_device()` looks up the SHA-256 of the
-   `scanner_device` cookie in `scanner_devices` (not revoked). Otherwise 403
+1. **Device check:** `_scanner_allowed()`. Skipped unless the `require_scanner_approval`
+   setting is `1`; then `_current_scanner_device()` must find the SHA-256 of the
+   `scanner_device` cookie in `scanner_devices` (not revoked), otherwise 403
    `DEVICE_NOT_APPROVED`.
 2. Decode the frame. **BlazeFace** (`liveness/face_utils.py`): 0 faces → `NO_FACE`,
    more than 1 → `MULTI_FACE` (session reset).
@@ -138,9 +140,11 @@ utils/validators.py        input validation
 templates/                 base.html (shared layout), login.html (single login), scanner.html (standalone),
                            scanner_not_approved.html, how_it_works.html (standalone public), pipeline_view.html,
                            test_mode.html, spoof_log.html, results.html, scan_log.html, settings.html, employees.html,
-                           employee_dashboard.html, admin_dashboard.html, analytics.html, attendance_history.html,
+                           employee_dashboard.html, admin_dashboard.html, attendance_history.html (incl. the old Analytics
+                           summary + chart), _log_tabs.html (Spoof Log | Scan Log tabs),
                            profile.html, register.html
 static/css/style.css       shared dark theme + status colors (--state-live/spoof/uncertain/noface)
+static/css/ui.css          simple shared page components (stats row, cards, tables, tabs, face view)
 scripts/                   create_admin, create_test_student, reset_password, measure_pipeline_latency
 tests/                     conftest.py (temp DB per test), helpers.py, 7 test files incl. test_crop_identical.py
 training/                  model training/eval code + real results (not imported at runtime)
@@ -172,14 +176,14 @@ single login page), `cloudflare_tunnel.md` (replaced by `docs/ngrok.md`).
 
 | Route | Methods | Access |
 |---|---|---|
-| `/` | GET | approved scanner device (403 page otherwise) |
-| `/api/recognize_face` | POST | approved scanner device |
+| `/` | GET | anyone; approved scanner device only if "Require approved scanner device" is on |
+| `/api/recognize_face` | POST | same as `/` (403 when approval is on and the device isn't approved) |
 | `/login` | GET, POST | public; Student/Admin toggle, real role checked → "Invalid credentials" on mismatch |
 | `/admin_login` | GET, POST | GET redirects to `/login?role=admin`; POST logs in as admin |
 | `/register`, `/how_it_works`, `/logout` | | public |
 | `/scanner` | GET | redirects to `/` |
 | `/employee`, `/profile`, `/api/register_face`, `/api/upload_photo` | | logged-in user |
-| `/admin`, `/manage_employees`, `/attendance_history`, `/analytics`, `/settings`, `/export_csv` | | admin |
+| `/admin`, `/manage_employees`, `/attendance_history`, `/analytics` (redirects to Attendance), `/settings`, `/export_csv` | | admin |
 | `/admin/pipeline_view`, `/api/admin/pipeline_frame` | GET / POST | admin; never marks attendance or saves images |
 | `/admin/test_mode`, `/api/admin/test_scan`, `/api/admin/test_mode/new_session`, `/api/admin/test_mode/metrics` | | admin; never runs recognition or marks attendance |
 | `/admin/spoof_log` (`?export=csv`), `/admin/scan_log` | GET | admin |
@@ -223,8 +227,8 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
 - **UNCERTAIN doesn't clear a blink attempt; SPOOF does.** Fixes a real bug found in live testing.
 - **Silent blink** instead of a random visible challenge. Deliberate tradeoff: a replayed
   video would blink too. The liveness model is the primary defense.
-- **Attendance only at the common scanner, on approved devices.** Scan Face links were removed
-  from student pages (Task 3), and only admin-approved browsers can run the scanner (Task 4).
+- **Attendance only at the common scanner.** Scan Face links were removed from student pages
+  (Task 3). Scanner-device approval (Task 4) is now an optional setting, off by default.
 - **IoU tracking replaces the center-distance rule** (threshold 0.25, reasoning in Section 3).
 - **Registration owner checks** (`register_face`). A new sample must average ≥ `face_tolerance`
   similarity to the user's stored samples (skipped for the first one) and must not reach
@@ -258,7 +262,10 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
 - Phase 2: UI (single login, colors, scanner box label, meters removed, Reset face, Scan
   Log columns, Spoof Log, Results, Test Mode, How It Works).
 - Phase 3: collection mode + `docs/domain_adaptation_plan.md`.
-- Phase 4: 59 tests (now 67 with the server-side blink tests).
+- Phase 4: 59 tests (now 73 with the server-side blink, scanner-setting, log and CSV tests).
+- Final cleanup (2026-11-24): simpler UI everywhere, square face camera view (display only),
+  optional scanner approval, Analytics merged into Attendance, Scan Log as a Spoof Log tab,
+  v3 band removed (back to v2).
 - Phase 5: report rewrite, docs.
 
 ### Not verified (needs a person with a camera and a browser)

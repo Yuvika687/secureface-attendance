@@ -11,9 +11,6 @@
 .pv-stage h4 { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:0.5rem; font-weight:700; }
 .pv-img { width:100%; aspect-ratio:1/1; object-fit:contain; background:#000; border-radius:8px; display:block; }
 .pv-placeholder { width:100%; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; text-align:center; background:#000; border-radius:8px; color:var(--text-muted); font-size:0.75rem; padding:0.5rem; }
-.pv-video-wrap { position:relative; width:100%; background:#000; border-radius:12px; overflow:hidden; }
-.pv-video-wrap video { width:100%; display:block; transform:scaleX(-1); }
-.pv-video-wrap canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 .pv-decision { font-size:1.4rem; font-weight:800; }
 .pv-LIVE { color:#10b981; } .pv-SPOOF { color:#f43f5e; } .pv-UNCERTAIN { color:#38bdf8; } .pv-NO_FACE { color:#f59e0b; }
 .pv-row { display:flex; justify-content:space-between; font-size:0.8rem; padding:0.3rem 0; border-bottom:1px solid var(--border); }
@@ -29,9 +26,9 @@
             <span class="glass-card-title"><i class="fa-solid fa-video"></i> 1. Camera frame + BlazeFace detection</span>
         </div>
         <div class="glass-card-body">
-            <div class="pv-video-wrap">
+            <div class="face-view">
                 <video id="pvVideo" autoplay muted playsinline></video>
-                <canvas id="pvOverlay"></canvas>
+                <canvas id="pvView" width="480" height="480" aria-label="Camera view"></canvas>
             </div>
             <div class="pv-actions">
                 <button type="button" class="btn-primary" id="pvToggle"><i class="fa-solid fa-play"></i> Start</button>
@@ -91,7 +88,7 @@
 (function () {
     const COLORS = { LIVE: '#10b981', SPOOF: '#f43f5e', UNCERTAIN: '#38bdf8', NO_FACE: '#f59e0b' };
     const video = document.getElementById('pvVideo');
-    const overlay = document.getElementById('pvOverlay');
+    const view = createFaceView('pvVideo', 'pvView');
     const statusEl = document.getElementById('pvStatus');
     const toggleBtn = document.getElementById('pvToggle');
     const explainBtn = document.getElementById('pvExplain');
@@ -108,23 +105,11 @@
     }
 
     function drawBoxes(res) {
-        const rect = overlay.getBoundingClientRect();
-        overlay.width = rect.width; overlay.height = rect.height;
-        const ctx = overlay.getContext('2d');
-        ctx.clearRect(0, 0, overlay.width, overlay.height);
-        if (!res || !res.boxes) return;
-        const sx = overlay.width / res.frame_width, sy = overlay.height / res.frame_height;
-        const color = COLORS[res.state] || '#f59e0b';
-        res.boxes.forEach(b => {
-            // video preview is mirrored, so mirror the box too
-            const x = overlay.width - (b.x + b.width) * sx, y = b.y * sy, w = b.width * sx, h = b.height * sy;
-            ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
-            const label = `${res.state || ''} · face ${(b.confidence * 100).toFixed(1)}%`;
-            ctx.font = '600 13px Inter, sans-serif';
-            const tw = ctx.measureText(label).width + 10;
-            ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - 20), tw, 20);
-            ctx.fillStyle = '#000'; ctx.fillText(label, x + 5, Math.max(14, y - 6));
-        });
+        // Largest face's box, drawn on the square face view (display only).
+        const best = (res && res.boxes || []).slice().sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        if (!best) { view.setBox(null); return; }
+        view.setBox({ ...best, frame_width: res.frame_width, frame_height: res.frame_height },
+                    COLORS[res.state] || '#f59e0b', `${res.state || ''} · face ${(best.confidence * 100).toFixed(1)}%`);
     }
 
     function render(res) {
@@ -173,7 +158,7 @@
 
     toggleBtn.addEventListener('click', () => {
         if (running) {
-            running = false; stopCamera();
+            running = false; stopCamera(); view.stop();
             toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
             statusEl.textContent = 'Stopped. Press Start to use Explain (it needs the live camera).';
             explainBtn.disabled = true;
@@ -181,6 +166,7 @@
         }
         statusEl.textContent = 'Starting camera…';
         startCamera('pvVideo');
+        view.start();
         running = true;
         toggleBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
         video.addEventListener('loadeddata', () => loop(), { once: true });
@@ -204,7 +190,7 @@
                 camBox.className = 'pv-placeholder'; camBox.textContent = 'No face in this frame.';
             }
             statusEl.textContent = 'Paused on the explained frame. Press Start to resume.';
-            stopCamera();
+            view.freeze(); stopCamera();   // the face view keeps showing the explained frame
             toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
         } catch (e) {
             camBox.className = 'pv-placeholder'; camBox.textContent = 'Error: ' + e.message;

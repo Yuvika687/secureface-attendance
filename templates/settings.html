@@ -1,218 +1,91 @@
 {% extends 'base.html' %}
 {% block title %}Settings - SecureFace Attendance{% endblock %}
 {% block page_title %}Settings{% endblock %}
-{% block page_subtitle %}Configure system preferences{% endblock %}
+{% block page_subtitle %}Attendance rules, recognition and scanner{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('settings') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="settings-grid">
-        <!-- Attendance Rules -->
-        <div class="settings-section">
-            <h3><i class="fa-solid fa-clock" style="color:var(--accent-gold);"></i> Attendance Rules</h3>
-            
-            <div class="setting-row">
-                <div class="setting-label">
-                    Late Cutoff Hour
-                    <small>Arrivals after this are marked Late</small>
-                </div>
-                <input type="number" name="late_cutoff_hour" class="setting-input" value="{{ settings.late_cutoff_hour }}" min="0" max="23">
-            </div>
-            
-            <div class="setting-row">
-                <div class="setting-label">
-                    Late Cutoff Minute
-                    <small>Minutes past the hour</small>
-                </div>
-                <input type="number" name="late_cutoff_minute" class="setting-input" value="{{ settings.late_cutoff_minute }}" min="0" max="59">
-            </div>
-
-            <div style="margin-top:1rem; padding:0.75rem; background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.12); border-radius:10px;">
-                <div style="font-size:0.78rem; color:var(--accent-gold); font-weight:600;">
-                    <i class="fa-solid fa-info-circle"></i> Current: Arrivals after {{ settings.late_cutoff_hour }}:{{ '%02d' | format(settings.late_cutoff_minute|int) }} are marked Late
-                </div>
-            </div>
-        </div>
-
-        <!-- Face Recognition -->
-        <div class="settings-section">
-            <h3><i class="fa-solid fa-camera" style="color:var(--accent-cyan);"></i> Face Recognition</h3>
-            
-            <div class="setting-row">
-                <div class="setting-label">
-                    Recognition Tolerance
-                    <small>Lower = stricter matching (0.3-0.6)</small>
-                </div>
-                <input type="number" name="face_tolerance" class="setting-input" value="{{ settings.face_tolerance }}" min="0.3" max="0.6" step="0.05">
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    Minimum Enrollment Samples
-                    <small>Face scans required before recognition is enabled for a person</small>
-                </div>
-                <input type="number" name="min_face_samples" class="setting-input" value="{{ settings.min_face_samples }}" min="1" max="15" step="1">
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    Liveness Decision Threshold
-                    <small>P(spoof) above this (outside the gray zone) is rejected as SPOOF</small>
-                </div>
-                <input type="number" name="liveness_threshold" class="setting-input" value="{{ settings.liveness_threshold }}" min="0.1" max="0.9" step="0.05">
-            </div>
-
-            <div style="margin-top:1rem; padding:0.75rem; background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.12); border-radius:10px;">
-                <div style="font-size:0.78rem; color:var(--accent-cyan); font-weight:600;">
-                    <i class="fa-solid fa-shield-halved"></i> Liveness check: trained MobileNetV3-Small classifier<br>
-                    <span style="margin-left:1.3rem; font-weight:500; color:var(--text-muted);">Plus a randomized blink / head-turn challenge after recognition</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Email Notifications -->
-        <div class="settings-section">
-            <h3><i class="fa-solid fa-envelope" style="color:var(--accent-purple);"></i> Email Notifications</h3>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    Auto Absentee Emails
-                    <small>Send notifications to absent students</small>
-                </div>
-                <div style="display:flex; align-items:center; gap:0.65rem;">
-                    <label style="position:relative; display:inline-block; width:44px; height:24px;">
-                        <input type="checkbox" name="email_enabled" value="1" {% if settings.email_enabled == '1' %}checked{% endif %}
-                               style="opacity:0; width:0; height:0; position:absolute;"
-                               onchange="this.parentElement.querySelector('.toggle-slider').classList.toggle('active', this.checked)">
-                        <span class="toggle-slider {% if settings.email_enabled == '1' %}active{% endif %}" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:12px; transition:0.3s;">
-                            <span style="position:absolute; height:18px; width:18px; left:2px; bottom:2px; background:var(--text-muted); border-radius:50%; transition:0.3s;"></span>
-                        </span>
-                    </label>
-                    <span style="font-size:0.72rem; font-weight:600; color:{% if settings.email_enabled == '1' %}var(--accent-emerald){% else %}var(--text-muted){% endif %};">
-                        {% if settings.email_enabled == '1' %}Enabled{% else %}Disabled{% endif %}
-                    </span>
-                </div>
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    Trigger Hour
-                    <small>Hour (24h) to send absentee emails</small>
-                </div>
-                <input type="number" name="email_trigger_hour" class="setting-input" value="{{ settings.email_trigger_hour }}" min="0" max="23">
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    Trigger Minute
-                    <small>Minute past the hour</small>
-                </div>
-                <input type="number" name="email_trigger_minute" class="setting-input" value="{{ settings.email_trigger_minute }}" min="0" max="59">
-            </div>
-
-            <div class="setting-row">
-                <div class="setting-label">
-                    HR Email (CC)
-                    <small>Optional: CC this email on all notifications</small>
-                </div>
-                <input type="email" name="hr_email" class="setting-input" style="width:200px; text-align:left;" value="{{ settings.hr_email }}" placeholder="hr@company.com">
-            </div>
-
-            <div style="margin-top:0.65rem;">
-                <button type="button" class="btn-sm" onclick="sendTestEmail()" id="testEmailBtn" style="width:100%; justify-content:center; padding:0.55rem;">
-                    <i class="fa-solid fa-paper-plane"></i> Send Test Email
-                </button>
-            </div>
-        </div>
-
-        <!-- Organization + Actions -->
-        <div class="settings-section" style="display:flex; flex-direction:column; justify-content:space-between;">
-            <div>
-                <h3><i class="fa-solid fa-building" style="color:var(--accent-emerald);"></i> Organization</h3>
-                
-                <div class="setting-row">
-                    <div class="setting-label">
-                        Company Name
-                        <small>Displayed in headers & emails</small>
-                    </div>
-                    <input type="text" name="company_name" class="setting-input" style="width:200px; text-align:left;" value="{{ settings.company_name }}">
-                </div>
-
-                <h3 style="margin-top:1.25rem;"><i class="fa-solid fa-download" style="color:var(--accent-cyan);"></i> Data Management</h3>
-                
-                <div style="display:flex; flex-direction:column; gap:0.75rem; margin-top:0.75rem;">
-                    <a href="{{ url_for('export_csv') }}" class="btn-sm" style="justify-content:center; padding:0.65rem; font-size:0.82rem;">
-                        <i class="fa-solid fa-file-csv"></i> Export All Attendance (CSV)
-                    </a>
-                </div>
-            </div>
-
-            <button type="submit" class="btn-primary" style="margin-top:1.5rem;">
-                <i class="fa-solid fa-check"></i> Save All Settings
-            </button>
-        </div>
-    </div>
-</form>
-
-<!-- Scanner devices (separate forms: approve / remove) -->
-<div class="settings-section" style="margin-top:1.25rem;">
-    <h3><i class="fa-solid fa-camera" style="color:var(--accent-emerald);"></i> Scanner Devices</h3>
-    <p style="font-size:0.78rem; color:var(--text-muted); margin:0.35rem 0 0.85rem;">
-        Only approved devices can mark attendance. Other devices opening the scanner page see
-        "This device is not an approved scanner."
-    </p>
-
-    {% if this_device_id %}
-    <div style="font-size:0.82rem; color:var(--accent-emerald); font-weight:600; margin-bottom:0.85rem;">
-        <i class="fa-solid fa-circle-check"></i> This device is an approved scanner.
-    </div>
-    {% else %}
-    <form method="POST" action="{{ url_for('admin_approve_scanner_device') }}" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:0.85rem;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="label" maxlength="60" placeholder="Device name (e.g. Main entrance)" class="setting-input" style="width:240px; text-align:left;">
-        <button type="submit" class="btn-primary" style="padding:0.55rem 1rem;">
-            <i class="fa-solid fa-check"></i> Set this device as scanner
-        </button>
-    </form>
-    {% endif %}
-
-    {% if scanner_devices %}
-    <div style="display:flex; flex-direction:column; gap:0.5rem;">
-        {% for d in scanner_devices %}
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:10px;">
-            <div style="min-width:0;">
-                <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">
-                    {{ d['label'] }}{% if d['id'] == this_device_id %} <span style="color:var(--accent-emerald); font-weight:600;">(this device)</span>{% endif %}
-                </div>
-                <div style="font-size:0.7rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:420px;">
-                    Approved {{ d['created_at'] }}{% if d['approved_by_email'] %} by {{ d['approved_by_email'] }}{% endif %} · {{ d['user_agent'] }}
-                </div>
-            </div>
-            <form method="POST" action="{{ url_for('admin_revoke_scanner_device', device_id=d['id']) }}" style="margin:0;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-sm" style="color:var(--accent-rose);">
-                    <i class="fa-solid fa-xmark"></i> Remove approval
-                </button>
-            </form>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div style="font-size:0.78rem; color:var(--text-muted);">No approved scanner devices yet.</div>
-    {% endif %}
-</div>
-
 <style>
-.toggle-slider.active {
-    background: rgba(16,185,129,0.2) !important;
-    border-color: rgba(16,185,129,0.3) !important;
-}
-.toggle-slider.active span {
-    transform: translateX(20px) !important;
-    background: var(--accent-emerald) !important;
-}
+.set-row { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.65rem 0; border-bottom:1px solid var(--ui-line); }
+.set-row:last-child { border-bottom:0; }
+.set-row .lbl { font-size:.86rem; font-weight:600; color:var(--text-primary); }
+.set-row .lbl small { display:block; font-weight:400; font-size:.74rem; color:var(--text-muted); margin-top:.1rem; }
+.set-row input[type=number], .set-row input[type=text], .set-row input[type=email] { width:120px; background:rgba(0,0,0,.25); border:1px solid var(--ui-line); color:var(--text-primary); border-radius:9px; padding:.45rem .6rem; font:inherit; font-size:.85rem; }
+.set-row input.wide { width:220px; }
+.set-row input[type=checkbox] { width:20px; height:20px; accent-color:var(--ui-good); }
 </style>
 
+<div class="ui-page">
+<form method="POST" action="{{ url_for('settings') }}" id="settingsForm" class="ui-page">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="ui-grid-2">
+        <div class="ui-card">
+            <div class="ui-card-title">Attendance</div>
+            <div class="set-row"><div class="lbl">Late after (hour)<small>24-hour clock</small></div><input type="number" name="late_cutoff_hour" value="{{ settings.late_cutoff_hour }}" min="0" max="23"></div>
+            <div class="set-row"><div class="lbl">Late after (minute)</div><input type="number" name="late_cutoff_minute" value="{{ settings.late_cutoff_minute }}" min="0" max="59"></div>
+            <p class="ui-hint" style="margin-top:.5rem;">Now: check-ins after {{ settings.late_cutoff_hour }}:{{ '%02d' | format(settings.late_cutoff_minute|int) }} are marked <span class="ui-badge late">Late</span></p>
+        </div>
+
+        <div class="ui-card">
+            <div class="ui-card-title">Face recognition</div>
+            <div class="set-row"><div class="lbl">Recognition tolerance<small>Lower = stricter matching (0.3–0.6)</small></div><input type="number" name="face_tolerance" value="{{ settings.face_tolerance }}" min="0.3" max="0.6" step="0.05"></div>
+            <div class="set-row"><div class="lbl">Face samples to register<small>Photos taken when a student registers (1–15)</small></div><input type="number" name="min_face_samples" value="{{ settings.min_face_samples }}" min="1" max="15" step="1"></div>
+            <div class="set-row"><div class="lbl">Liveness threshold<small>Spoof score above this is blocked as SPOOF</small></div><input type="number" name="liveness_threshold" value="{{ settings.liveness_threshold }}" min="0.1" max="0.9" step="0.05"></div>
+        </div>
+
+        <div class="ui-card">
+            <div class="ui-card-title">Scanner</div>
+            <div class="set-row">
+                <div class="lbl">Require approved scanner device<small>Off: any device can open the scanner and mark attendance. On: only devices approved below.</small></div>
+                <input type="checkbox" name="require_scanner_approval" value="1" {% if settings.require_scanner_approval == '1' %}checked{% endif %} aria-label="Require approved scanner device">
+            </div>
+        </div>
+
+        <div class="ui-card">
+            <div class="ui-card-title">Email</div>
+            <div class="set-row"><div class="lbl">Absentee emails<small>Email students who did not check in</small></div><input type="checkbox" name="email_enabled" value="1" {% if settings.email_enabled == '1' %}checked{% endif %} aria-label="Absentee emails"></div>
+            <div class="set-row"><div class="lbl">Send at (hour : minute)</div><span style="display:flex; gap:.4rem;"><input type="number" name="email_trigger_hour" value="{{ settings.email_trigger_hour }}" min="0" max="23" style="width:70px;" aria-label="Hour"><input type="number" name="email_trigger_minute" value="{{ settings.email_trigger_minute }}" min="0" max="59" style="width:70px;" aria-label="Minute"></span></div>
+            <div class="set-row"><div class="lbl">CC address<small>Optional</small></div><input type="email" name="hr_email" class="wide" value="{{ settings.hr_email }}" placeholder="office@example.com"></div>
+            <div class="set-row"><div class="lbl">Organisation name<small>Shown in emails</small></div><input type="text" name="company_name" class="wide" value="{{ settings.company_name }}"></div>
+            <button type="button" class="ui-btn" onclick="sendTestEmail()" id="testEmailBtn" style="margin-top:.6rem;">Send test email</button>
+        </div>
+    </div>
+    <div><button type="submit" class="ui-btn primary">Save settings</button></div>
+</form>
+
+<div class="ui-card">
+    <div class="ui-card-title">Approved scanner devices <small>{% if settings.require_scanner_approval == '1' %}Approval is ON: only these devices can scan.{% else %}Approval is OFF: this list is not enforced.{% endif %}</small></div>
+    {% if this_device_id %}
+    <p class="ui-hint" style="color:var(--ui-good); margin-bottom:.6rem;">This device is an approved scanner.</p>
+    {% else %}
+    <form method="POST" action="{{ url_for('admin_approve_scanner_device') }}" class="ui-filters" style="margin-bottom:.8rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Device name <input type="text" name="label" maxlength="60" placeholder="Main entrance"></label>
+        <button type="submit" class="ui-btn primary">Set this device as scanner</button>
+    </form>
+    {% endif %}
+    {% if scanner_devices %}
+    <table class="ui-table">
+        <thead><tr><th>Device</th><th>Approved</th><th></th></tr></thead>
+        <tbody>
+        {% for d in scanner_devices %}
+            <tr>
+                <td class="strong">{{ d['label'] }}{% if d['id'] == this_device_id %} <span class="ui-badge good">this device</span>{% endif %}</td>
+                <td>{{ d['created_at'] }}{% if d['approved_by_email'] %} by {{ d['approved_by_email'] }}{% endif %}</td>
+                <td style="text-align:right;">
+                    <form method="POST" action="{{ url_for('admin_revoke_scanner_device', device_id=d['id']) }}" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ui-btn danger" style="padding:.3rem .7rem;">Remove</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="ui-hint">No approved devices.</p>
+    {% endif %}
+</div>
+</div>
 {% endblock %}
 
 {% block scripts %}

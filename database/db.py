@@ -293,6 +293,8 @@ _DEFAULT_SETTINGS = {
     'email_trigger_hour': '18',
     'email_trigger_minute': '0',
     'hr_email': '',
+    # Scanner-device approval is optional: off = any device can scan.
+    'require_scanner_approval': '0',
 }
 
 

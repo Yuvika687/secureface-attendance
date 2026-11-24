@@ -1,169 +1,152 @@
 {% extends 'base.html' %}
 {% block title %}Results - SecureFace Attendance{% endblock %}
 {% block page_title %}Results{% endblock %}
-{% block page_subtitle %}Liveness model results, read from training/results/summary.json{% endblock %}
+{% block page_subtitle %}How well the trained liveness model separates real faces from attacks{% endblock %}
 
 {% macro pct(x) %}{% if x is not none %}{{ '%.2f'|format(x * 100) }}%{% else %}—{% endif %}{% endmacro %}
 
 {% block content %}
-<style>
-.r-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.75rem; margin-bottom:1rem; }
-.r-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:0.9rem 1rem; }
-.r-card .k { font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; font-weight:700; letter-spacing:0.04em; }
-.r-card .v { font-size:1.5rem; font-weight:800; color:var(--text-primary); margin-top:0.2rem; }
-.r-section { margin-bottom:1.25rem; }
-.r-note { font-size:0.72rem; color:var(--text-muted); margin:0.4rem 0 0.75rem; line-height:1.5; }
-.r-plots { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0.85rem; }
-.r-plots figure { margin:0; background:#fff; border-radius:10px; padding:0.4rem; }
-.r-plots img { width:100%; display:block; border-radius:6px; }
-.r-plots figcaption { font-size:0.72rem; color:#334155; padding:0.35rem 0.25rem 0.1rem; }
-.r-pre { white-space:pre-wrap; font-family:monospace; font-size:0.72rem; color:var(--text-secondary); background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:0.85rem; max-height:320px; overflow:auto; }
-.live-banner { border:1px dashed var(--accent-gold); border-radius:14px; padding:1rem; }
-</style>
-
+<div class="ui-page">
 {% if error %}
-<div class="glass-card"><div class="glass-card-body"><div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i>{{ error }}</div></div></div>
+    <div class="ui-card ui-empty">The model results could not be loaded.</div>
 {% else %}
-
-{% set h = s.headline %}
-<div class="r-section">
-    <h3 style="font-size:1rem; font-weight:800; margin-bottom:0.25rem;">Dataset results: deployed model</h3>
-    <p class="r-note">{{ h.active_model }} · n = {{ h.n }} test images · {{ h.protocol }}</p>
-    <div class="r-cards">
-        <div class="r-card"><div class="k">Accuracy</div><div class="v">{{ pct(h.accuracy) }}</div></div>
-        <div class="r-card"><div class="k">APCER</div><div class="v">{{ pct(h.apcer) }}</div></div>
-        <div class="r-card"><div class="k">BPCER</div><div class="v">{{ pct(h.bpcer) }}</div></div>
-        <div class="r-card"><div class="k">HTER</div><div class="v">{{ pct(h.hter) }}</div></div>
+    {% set h = s.headline %}
+    {% set v2 = s.v1_vs_v2.v2 %}
+    <div class="ui-stats">
+        <div class="ui-stat good"><div class="ui-stat-label">Accuracy</div><div class="ui-stat-value">{{ pct(h.accuracy) }}</div><div class="ui-stat-note">Share of all test images the model got right.</div></div>
+        <div class="ui-stat"><div class="ui-stat-label">APCER</div><div class="ui-stat-value">{{ pct(h.apcer) }}</div><div class="ui-stat-note">Attacks wrongly accepted as a real face.</div></div>
+        <div class="ui-stat"><div class="ui-stat-label">BPCER</div><div class="ui-stat-value">{{ pct(h.bpcer) }}</div><div class="ui-stat-note">Real faces wrongly rejected as an attack.</div></div>
+        <div class="ui-stat"><div class="ui-stat-label">HTER</div><div class="ui-stat-value">{{ pct(h.hter) }}</div><div class="ui-stat-note">Average of APCER and BPCER. Lower is better.</div></div>
     </div>
-    <p class="r-note">APCER = attacks accepted as real. BPCER = real faces rejected as attacks. HTER = average of the two.</p>
-</div>
+    <p class="ui-hint">Measured on {{ '{:,}'.format(h.n) }} test images ({{ '{:,}'.format(v2.n_live) }} real, {{ '{:,}'.format(v2.n_spoof) }} attacks) from the CelebA-Spoof dataset that the model never saw while training.
+    {% if latency_median_ms %}A full scan of one camera frame takes {{ '%.1f'|format(latency_median_ms) }} ms (median, measured on the running app).{% endif %}</p>
 
-{% set vv = s.v1_vs_v2 %}
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-crop-simple"></i> v1 → v2: the crop fix</span></div>
-    <div class="glass-card-body">
-        <p class="r-note">v1 was trained on differently framed crops than the live pipeline produces; v2 was retrained on crops made the same way the live pipeline crops faces. Same {{ vv.n }}-image test set.</p>
-        <div class="table-scroll"><table>
-            <thead><tr><th>Model</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
-            <tbody>
-                <tr><td>v1</td><td class="num">{{ pct(vv.v1.accuracy) }}</td><td class="num">{{ pct(vv.v1.apcer) }}</td><td class="num">{{ pct(vv.v1.bpcer) }}</td><td class="num">{{ pct(vv.v1.hter) }}</td></tr>
-                <tr><td>v2 (deployed)</td><td class="num">{{ pct(vv.v2.accuracy) }}</td><td class="num">{{ pct(vv.v2.apcer) }}</td><td class="num">{{ pct(vv.v2.bpcer) }}</td><td class="num">{{ pct(vv.v2.hter) }}</td></tr>
-            </tbody>
-        </table></div>
-        <h4 style="font-size:0.8rem; margin:1rem 0 0.4rem;">APCER per attack type</h4>
-        <div class="table-scroll"><table>
-            <thead><tr><th>Attack type</th><th>n</th><th>v1 APCER</th><th>v2 APCER</th></tr></thead>
-            <tbody>
-            {% for name, v2 in vv.per_attack_type_apcer.v2.items() %}
-                <tr><td>{{ name }}</td><td class="num">{{ v2.n }}</td><td class="num">{{ pct(vv.per_attack_type_apcer.v1[name].apcer) }}</td><td class="num">{{ pct(v2.apcer) }}</td></tr>
-            {% endfor %}
-            </tbody>
-        </table></div>
-    </div>
-</div>
+    <div class="ui-grid-2">
+        {% if history %}
+        <div class="ui-card">
+            <div class="ui-card-title">Training curves <small>accuracy per epoch</small></div>
+            <div class="ui-chart"><canvas id="curveChart"></canvas></div>
+            <p class="ui-meaning"><b>What this means:</b> accuracy on unseen validation images climbs quickly, then levels off near training accuracy, so the model learned the task without just memorising the training images.</p>
+        </div>
+        {% endif %}
 
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-chart-line"></i> Training curves and confusion matrices (v2)</span></div>
-    <div class="glass-card-body">
-        <div class="r-plots">
-            {% for key, cap in [('training_curves', 'Training curves (v2, face-crop trained)'), ('confusion_test', 'Confusion matrix: test set'), ('confusion_val', 'Confusion matrix: validation set'), ('breakdown_spoof_type', 'APCER by spoof type (v2)'), ('gray_zone_curve', 'Gray zone: coverage vs. error')] %}
-                {% if plots[key] %}
-                <figure><img loading="lazy" src="{{ url_for('admin_results_plot', name=key) }}" alt="{{ cap }}"><figcaption>{{ cap }}</figcaption></figure>
-                {% else %}
-                <div class="empty-state" style="border:1px solid var(--border); border-radius:10px;"><i class="fa-regular fa-image"></i>{{ cap }}: plot file not found</div>
-                {% endif %}
-            {% endfor %}
+        <div class="ui-card">
+            <div class="ui-card-title">Confusion matrix <small>{{ '{:,}'.format(h.n) }} test images</small></div>
+            {% set live_wrong = (v2.bpcer * v2.n_live)|round|int %}
+            {% set spoof_wrong = (v2.apcer * v2.n_spoof)|round|int %}
+            <table class="ui-table" style="text-align:center;">
+                <thead><tr><th></th><th style="text-align:center;">Model said REAL</th><th style="text-align:center;">Model said ATTACK</th></tr></thead>
+                <tbody>
+                    <tr><td class="strong" style="text-align:left;">Real face</td>
+                        <td style="background:rgba(16,185,129,.14); color:var(--ui-good); font-size:1.3rem; font-weight:800;">{{ v2.n_live - live_wrong }}</td>
+                        <td style="background:rgba(244,63,94,.12); color:var(--ui-bad); font-size:1.3rem; font-weight:800;">{{ live_wrong }}</td></tr>
+                    <tr><td class="strong" style="text-align:left;">Attack</td>
+                        <td style="background:rgba(244,63,94,.12); color:var(--ui-bad); font-size:1.3rem; font-weight:800;">{{ spoof_wrong }}</td>
+                        <td style="background:rgba(16,185,129,.14); color:var(--ui-good); font-size:1.3rem; font-weight:800;">{{ v2.n_spoof - spoof_wrong }}</td></tr>
+                </tbody>
+            </table>
+            <p class="ui-meaning"><b>What this means:</b> green cells are correct. Of {{ '{:,}'.format(v2.n_spoof) }} attacks, {{ spoof_wrong }} got through; of {{ '{:,}'.format(v2.n_live) }} real faces, {{ live_wrong }} were wrongly blocked.</p>
+        </div>
+
+        <div class="ui-card">
+            <div class="ui-card-title">v1 vs v2 <small>accuracy, same test images</small></div>
+            <div class="ui-chart"><canvas id="versionChart"></canvas></div>
+            <p class="ui-meaning"><b>What this means:</b> v1 was trained on faces framed differently from what the live camera produces. Retraining on crops made exactly like the live ones (v2) raised accuracy from {{ pct(s.v1_vs_v2.v1.accuracy) }} to {{ pct(v2.accuracy) }} and cut the error rate (HTER) from {{ pct(s.v1_vs_v2.v1.hter) }} to {{ pct(v2.hter) }}.</p>
+        </div>
+
+        <div class="ui-card">
+            <div class="ui-card-title">Results per attack type <small>attacks that got through (APCER), v2</small></div>
+            <div class="ui-chart tall"><canvas id="attackChart"></canvas></div>
+            <p class="ui-meaning"><b>What this means:</b> each bar is the share of that attack type wrongly accepted as real. Shorter is better; screen replays (PC, Pad, Phone) are the hardest.</p>
+        </div>
+
+        {% set me = s.masked_eval %}
+        <div class="ui-card">
+            <div class="ui-card-title">Masked vs unmasked faces <small>accuracy</small></div>
+            <div class="ui-chart"><canvas id="maskChart"></canvas></div>
+            <p class="ui-meaning"><b>What this means:</b> with a mask drawn over the lower face, accuracy only drops from {{ pct(me.unmasked_baseline_metrics.accuracy) }} to {{ pct(me.masked_metrics.accuracy) }}, so the liveness check still works with a mask. Recognising who it is still needs the mask removed.</p>
         </div>
     </div>
-</div>
+{% endif %}
 
-{% set bc = s.backbone_comparison %}
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-scale-balanced"></i> Backbone comparison</span></div>
-    <div class="glass-card-body">
-        <p class="r-note">All three trained on the same face crops and tested on the same {{ bc.n }} images. Deployed backbone: <strong>{{ bc.deployed_backbone }}</strong>.</p>
-        <div class="table-scroll"><table>
-            <thead><tr><th>Backbone</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th><th>Params</th><th>File size</th><th>CPU ms (PyTorch)</th><th>CPU ms (ONNX)</th><th>MPS ms</th></tr></thead>
-            <tbody>
-            {% for b in ['mobilenet_v3_small', 'efficientnet_b0', 'resnet18'] %}
-                {% set m = bc[b] %}{% set l = bc.latency_and_size[b] %}
-                <tr>
-                    <td>{{ b }}{% if b == bc.deployed_backbone %} <span class="state-badge state-LIVE">deployed</span>{% endif %}</td>
-                    <td class="num">{{ pct(m.accuracy) }}</td><td class="num">{{ pct(m.apcer) }}</td><td class="num">{{ pct(m.bpcer) }}</td><td class="num">{{ pct(m.hter) }}</td>
-                    <td class="num">{{ '{:,}'.format(l.param_count) }}</td>
-                    <td class="num">{{ '%.2f'|format(l.model_file_size_mb) }} MB</td>
-                    <td class="num">{{ '%.2f'|format(l.latency_cpu_ms_median) }}</td>
-                    <td class="num">{{ '%.2f'|format(l.cpu_onnx_ms) }}</td>
-                    <td class="num">{{ '%.2f'|format(l.latency_mps_ms_median) }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table></div>
-        <p class="r-note">Latency columns are median single-image inference times from the training project's benchmark ({{ bc.latency_and_size.mobilenet_v3_small.n_timed_runs }} runs), not full-pipeline times.</p>
-    </div>
-</div>
-
-{% set gz = s.gray_zone %}
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-circle-half-stroke"></i> UNCERTAIN band (gray zone)</span></div>
-    <div class="glass-card-body">
-        <p class="r-note">Band chosen on the validation set only: P(spoof) between {{ '%.4f'|format(gz.band_low) }} and {{ '%.4f'|format(gz.band_high) }} → UNCERTAIN (retry). On the test set:</p>
-        <div class="table-scroll"><table>
-            <thead><tr><th></th><th>Coverage</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
-            <tbody>
-                <tr><td>Plain 0.5 threshold</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.coverage) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.accuracy) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.apcer) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.bpcer) }}</td><td class="num">{{ pct(gz.test_baseline_plain_threshold.hter) }}</td></tr>
-                <tr><td>With UNCERTAIN band (decided frames)</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.coverage) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.accuracy) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.apcer) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.bpcer) }}</td><td class="num">{{ pct(gz.test_gray_zone_decided_only.hter) }}</td></tr>
-            </tbody>
-        </table></div>
-    </div>
-</div>
-
-{% set me = s.masked_eval %}
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-head-side-mask"></i> Masked faces (synthetic mask overlay)</span></div>
-    <div class="glass-card-body">
-        <p class="r-note">{{ me.protocol }}</p>
-        <div class="table-scroll"><table>
-            <thead><tr><th></th><th>n</th><th>Accuracy</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
-            <tbody>
-                <tr><td>Masked</td><td class="num">{{ me.masked_metrics.n }}</td><td class="num">{{ pct(me.masked_metrics.accuracy) }}</td><td class="num">{{ pct(me.masked_metrics.apcer) }}</td><td class="num">{{ pct(me.masked_metrics.bpcer) }}</td><td class="num">{{ pct(me.masked_metrics.hter) }}</td></tr>
-                <tr><td>Unmasked (same detection protocol)</td><td class="num">—</td><td class="num">{{ pct(me.unmasked_baseline_metrics.accuracy) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.apcer) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.bpcer) }}</td><td class="num">{{ pct(me.unmasked_baseline_metrics.hter) }}</td></tr>
-            </tbody>
-        </table></div>
-        <p class="r-note">Face detection rate on masked images: {{ pct(me.stage1_on_masked.detection_rate) }} ({{ me.stage1_on_masked.n_detected }} / {{ me.stage1_on_masked.n_eligible }}). Liveness detection works with masks; face recognition requires the mask to be removed.</p>
-    </div>
-</div>
-
-<div class="glass-card r-section">
-    <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-stopwatch"></i> Measured pipeline latency</span></div>
-    <div class="glass-card-body">
-        {% if latency_text %}
-        <p class="r-note">Raw output of <code>scripts/measure_pipeline_latency.py</code> against the running app, saved in <code>{{ latency_file }}</code>.</p>
-        <div class="r-pre">{{ latency_text }}</div>
+    <div class="ui-card" style="border-color:rgba(245,158,11,.45);">
+        <div class="ui-card-title">Live results from this camera (Test Mode) <span class="ui-badge late">Not dataset numbers</span></div>
+        {% if live.total %}
+        <div class="ui-table-wrap">
+            <table class="ui-table">
+                <thead><tr><th>Shown to camera</th><th class="num">Frames</th><th class="num">Correct</th><th class="num">Uncertain</th><th class="num">Wrong</th><th class="num">APCER</th><th class="num">BPCER</th><th class="num">HTER</th></tr></thead>
+                <tbody>
+                {% for r in live.rows if r.n %}
+                    <tr><td class="strong">{{ r.label }}</td><td class="num">{{ r.n }}</td><td class="num">{{ r.correct }}</td><td class="num">{{ r.UNCERTAIN }}</td><td class="num">{{ r.wrong }}</td>
+                        <td class="num">{{ pct(r.apcer) }}</td><td class="num">{{ pct(r.bpcer) }}</td><td class="num">{{ pct(r.hter) }}</td></tr>
+                {% endfor %}
+                    <tr><td class="strong">Overall</td><td class="num">{{ live.total }}</td><td></td><td></td><td></td>
+                        <td class="num">{{ pct(live.overall.apcer) }}</td><td class="num">{{ pct(live.overall.bpcer) }}</td><td class="num">{{ pct(live.overall.hter) }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="ui-meaning">Counted from real frames recorded in Test Mode on this computer.</p>
         {% else %}
-        <div class="empty-state"><i class="fa-regular fa-file"></i>No saved latency measurement found at {{ latency_file }}.</div>
+        <div class="ui-empty">No live tests recorded yet. Use <a href="{{ url_for('admin_test_mode') }}" style="color:var(--ui-good);">Test Mode</a>.</div>
         {% endif %}
     </div>
 </div>
-{% endif %}
+{% endblock %}
 
-<div class="live-banner r-section">
-    <h3 style="font-size:1rem; font-weight:800; margin-bottom:0.25rem;"><i class="fa-solid fa-flask" style="color:var(--accent-gold);"></i> Live test results (this camera, Test Mode)</h3>
-    <p class="r-note">Not dataset numbers. Counted from frames recorded in Test Mode on this installation, across all test sessions. Each frame is one decision (the scanner's 5-frame average).</p>
-    {% if live.total %}
-    <div class="table-scroll"><table>
-        <thead><tr><th>Shown to camera</th><th>Frames</th><th>LIVE</th><th>SPOOF</th><th>UNCERTAIN</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead>
-        <tbody>
-        {% for r in live.rows if r.n %}
-            <tr><td>{{ r.label }}</td><td class="num">{{ r.n }}</td><td class="num">{{ r.LIVE }}</td><td class="num">{{ r.SPOOF }}</td><td class="num">{{ r.UNCERTAIN }}</td>
-                <td class="num">{{ pct(r.apcer) }}</td><td class="num">{{ pct(r.bpcer) }}</td><td class="num">{{ pct(r.hter) }}</td></tr>
-        {% endfor %}
-            <tr style="font-weight:700;"><td>Overall</td><td class="num">{{ live.total }}</td><td></td><td></td><td></td>
-                <td class="num">{{ pct(live.overall.apcer) }}</td><td class="num">{{ pct(live.overall.bpcer) }}</td><td class="num">{{ pct(live.overall.hter) }}</td></tr>
-        </tbody>
-    </table></div>
-    {% else %}
-    <div class="empty-state"><i class="fa-solid fa-flask"></i>No live test frames recorded yet. Use <a href="{{ url_for('admin_test_mode') }}" style="color:var(--accent-emerald);">Test Mode</a>.</div>
+{% block scripts %}
+{% if not error %}
+<script src="{{ url_for('static', filename='vendor/chartjs/dist/chart.umd.min.js') }}"></script>
+<script>
+(function () {
+    const grid = { color: 'rgba(255,255,255,0.05)' }, tick = { color: '#8b949e' };
+    const pctAxis = (min, max) => ({ min, max, grid, ticks: { ...tick, callback: v => v + '%' } });
+    const P = x => +(x * 100).toFixed(2);
+
+    {% if history %}
+    const hist = {{ history | tojson }};
+    new Chart(document.getElementById('curveChart'), {
+        type: 'line',
+        data: {
+            labels: hist.train_acc.map((_, i) => i + 1),
+            datasets: [
+                { label: 'Training', data: hist.train_acc.map(P), borderColor: '#8b949e', backgroundColor: '#8b949e', tension: .3, pointRadius: 2 },
+                { label: 'Validation', data: hist.val_acc.map(P), borderColor: '#10b981', backgroundColor: '#10b981', tension: .3, pointRadius: 2 },
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: tick } },
+                   scales: { x: { grid: { display: false }, ticks: tick, title: { display: true, text: 'epoch', color: '#8b949e' } }, y: pctAxis(80, 100) } }
+    });
     {% endif %}
-</div>
+
+    const vv = {{ s.v1_vs_v2 | tojson }};
+    new Chart(document.getElementById('versionChart'), {
+        type: 'bar',
+        data: {
+            labels: ['v1', 'v2 (deployed)'],
+            datasets: [{ label: 'Accuracy', data: [P(vv.v1.accuracy), P(vv.v2.accuracy)], backgroundColor: ['#6e7681', '#10b981'], borderRadius: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                   scales: { x: { grid: { display: false }, ticks: tick }, y: pctAxis(90, 100) } }
+    });
+
+    const at = Object.entries(vv.per_attack_type_apcer.v2).sort((a, b) => b[1].apcer - a[1].apcer);
+    new Chart(document.getElementById('attackChart'), {
+        type: 'bar',
+        data: { labels: at.map(([k]) => k), datasets: [{ label: 'Got through', data: at.map(([, v]) => P(v.apcer)), backgroundColor: '#f43f5e', borderRadius: 4 }] },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false },
+                   tooltip: { callbacks: { label: c => `${c.parsed.x}% of ${at[c.dataIndex][1].n} images` } } },
+                   scales: { y: { grid: { display: false }, ticks: tick }, x: { ...pctAxis(0, undefined), beginAtZero: true } } }
+    });
+
+    const me = {{ s.masked_eval | tojson }};
+    new Chart(document.getElementById('maskChart'), {
+        type: 'bar',
+        data: { labels: ['Unmasked', 'Masked'],
+                datasets: [{ data: [P(me.unmasked_baseline_metrics.accuracy), P(me.masked_metrics.accuracy)], backgroundColor: ['#10b981', '#38bdf8'], borderRadius: 4 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                   scales: { x: { grid: { display: false }, ticks: tick }, y: pctAxis(90, 100) } }
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

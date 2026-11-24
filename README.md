@@ -14,16 +14,16 @@ project is archived at
 
 | Part | Who | What |
 |---|---|---|
-| **Common scanner** (`/`) | Anyone, but only on a device an admin approved | Camera → liveness → recognition → natural blink → attendance. Shows name + student ID with "Attendance marked" or "Already marked today". |
+| **Common scanner** (`/`) | Anyone (optionally only on admin-approved devices) | Camera → liveness → recognition → natural blink → attendance. Shows name + student ID with "Attendance marked" or "Already marked today". |
 | **Student pages** | Logged-in students | Create an account, register their face once, view their own attendance. |
-| **Admin pages** | Logged-in admins | All attendance, students (with **Reset face**), settings, **scanner devices**, scan log, spoof log, **Results**, **Test Mode**, **Pipeline View** with Grad-CAM. |
+| **Admin pages** | Logged-in admins | Dashboard, Students (with **Reset face**), Attendance (summary, chart, filters, CSV), **Pipeline View** with Grad-CAM, **Test Mode**, Spoof Log (with a Scan Log tab), **Results**, Settings. |
 
 A public **How it works** page (`/how_it_works`) explains the pipeline.
 
 ## Scan pipeline
 
 ```
-Webcam frame (approved scanner device only; others see "This device is not an approved scanner.")
+Webcam frame (if "Require approved scanner device" is on: approved devices only)
   → BlazeFace face detection: reject if 0 or more than 1 face
   → Same-face tracking: IoU of this face box vs. the previous frame's; IoU < 0.25 ⇒ new person, reset
   → crop_face(): face + 25% margin, 224×224, ImageNet normalization (identical to training)
@@ -36,7 +36,7 @@ Webcam frame (approved scanner device only; others see "This device is not an ap
 ```
 
 Every stage reached is logged in `scan_events` with the frame's P(spoof), the 5-frame
-average and the IoU (Admin → Scan Log / Spoof Log).
+average and the IoU (Admin → Spoof Log → Scan Log tab).
 
 ## Models
 
@@ -78,18 +78,19 @@ First startup requires internet for the pretrained vision models. On macOS/Linux
 Python 3.13 to create a venv, install requirements.txt, then run
 `python scripts/create_admin.py` and `python run_local.py` in that environment.
 
-1. Sign in as admin on the intended scanner browser. Open Settings → Scanner Devices →
-   Set this device as scanner, then log out.
-2. Students create accounts and use Register Face in their dashboards. Allow camera
-   access and capture the requested samples with only one unobstructed face visible.
-3. Return to the scanner in the approved browser. Look at the camera and blink naturally.
-   Check the student's dashboard or admin attendance history for the result.
+1. Students create accounts and use **Register face** on their dashboard. Allow camera
+   access; the popup takes 5 samples with only one face visible.
+2. Open the scanner (`/`) on the attendance laptop. Look at the camera and blink once.
+   The scanner shows the name and student ID with "Attendance marked" or "Already marked
+   today". The record appears on the admin Dashboard/Attendance and the student's dashboard.
+3. Optional: to allow only specific laptops to scan, turn on Settings → Scanner →
+   **Require approved scanner device**, then on each scanner laptop log in as admin and
+   click **Set this device as scanner**.
 
-The scanner opens the camera when the browser is approved and at least one face is
-enrolled. Select **Full screen** for a shared station. An unfamiliar live face gets
-a registration prompt. Students can resume partially saved enrollment and use the
-month picker on their dashboard to view earlier attendance. Dashboard charts, fonts,
-and icons are served by the laptop.
+The scanner shows one short status at a time: "Step into the frame.", "Only one person at
+a time.", "Hold still — checking again.", "Spoof detected — please use your real face.",
+"Face not recognized…" or "Blink once to check in.". The camera view is zoomed to the
+face for display only; the full camera frame is what the server analyses.
 
 Each installation creates its own empty SQLite database in `database/smartface.db`.
 Every friend creates their own accounts, scanner approvals and enrollments. Back up the
