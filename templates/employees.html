@@ -1,98 +1,51 @@
 {% extends 'base.html' %}
 {% block title %}Students - SecureFace Attendance{% endblock %}
-{% block page_title %}Student Directory{% endblock %}
-{% block page_subtitle %}Manage active personnel and biometric registrations{% endblock %}
+{% block page_title %}Students{% endblock %}
+{% block page_subtitle %}Manage students and their face registration{% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.75rem;">
-    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-        <span style="font-size:0.85rem; font-weight:600; color:var(--text-secondary);">{{ employees|length }} Students</span>
-        {% for dept in dept_stats %}
-        <span style="padding:3px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; font-size:0.68rem; font-weight:600; color:var(--text-muted);">
-            {{ dept['department'] }}: {{ dept['count'] }}
+<div class="ui-page">
+<div class="ui-card flush">
+    <div class="ui-card-title">
+        <span>{{ employees|length }} students</span>
+        <span style="display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;">
+            <span class="ui-filters"><input type="text" id="empSearch" placeholder="Search name or ID" oninput="filterEmployees()" aria-label="Search students"></span>
+            <button type="button" onclick="openAddModal()" class="ui-btn primary"><i class="fa-solid fa-user-plus"></i> Add Student</button>
         </span>
-        {% endfor %}
     </div>
-    <div style="display:flex; gap:0.65rem; align-items:center;">
-        <div class="search-bar" style="min-width:180px;">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="empSearch" placeholder="Search students..." oninput="filterEmployees()">
-        </div>
-        <button onclick="openAddModal()" style="background:linear-gradient(135deg, var(--accent-emerald), #059669); color:#fff; font-weight:700; padding:0.45rem 1.15rem; border-radius:10px; border:none; font-size:0.8rem; display:flex; align-items:center; gap:0.4rem; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 12px rgba(16,185,129,0.2); white-space:nowrap; font-family:inherit;">
-            <i class="fa-solid fa-user-plus"></i> Add Student
-        </button>
-    </div>
-</div>
-
-<div class="table-panel">
-    <table id="empTable">
+    <div class="ui-table-wrap">
+    <table class="ui-table" id="empTable">
         <thead>
-            <tr>
-                <th>Student</th>
-                <th>Network ID</th>
-                <th>Contact</th>
-                <th>Department</th>
-                <th>Biometrics</th>
-                <th>Actions</th>
-            </tr>
+            <tr><th>Name</th><th>Student ID</th><th>Email</th><th>Department</th><th>Face</th><th></th></tr>
         </thead>
         <tbody>
             {% for emp in employees %}
-            <tr class="emp-row" data-name="{{ emp['name']|lower }}" data-dept="{{ emp['department']|lower }}" data-id="{{ emp['employee_id']|lower }}">
-                <td>
-                    <div style="display:flex; align-items:center; gap:0.6rem;">
-                        {% if emp['profile_photo'] %}
-                        <img src="{{ url_for('static', filename='uploads/profiles/' + emp['profile_photo']) }}" style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;">
-                        {% else %}
-                        <div class="feed-avatar" style="width:32px; height:32px; font-size:0.62rem;">{{ emp['name'][0:2] | upper }}</div>
-                        {% endif %}
-                        <div>
-                            <span style="font-weight:600; color:var(--text-primary); font-size:0.82rem;">{{ emp['name'] }}</span>
-                            {% if emp['phone'] %}<div style="font-size:0.65rem; color:var(--text-muted);">{{ emp['phone'] }}</div>{% endif %}
-                        </div>
-                    </div>
-                </td>
-                <td style="font-family:monospace; font-weight:600; color:var(--accent-cyan); font-size:0.76rem;">{{ emp['employee_id'] }}</td>
-                <td style="font-size:0.78rem; color:var(--text-secondary);">{{ emp['email'] }}</td>
-                <td>
-                    <span style="padding:3px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:6px; font-size:0.7rem; font-weight:600; color:var(--text-secondary);">
-                        {{ emp['department'] }}
-                    </span>
-                </td>
-                <td>
-                    {% if emp['face_registered'] %}
-                    <span class="status-badge online"><i class="fa-solid fa-check"></i> Trained</span>
-                    {% else %}
-                    <span class="status-badge late"><i class="fa-regular fa-clock"></i> Pending</span>
-                    {% endif %}
-                </td>
-                <td style="white-space:nowrap;">
-                    <form method="POST" action="{{ url_for('admin_reset_face', user_id=emp['id']) }}" style="display:inline;" data-confirm="Reset face for {{ emp['name'] }} ({{ emp['employee_id'] }})? Their saved face samples will be deleted and they must register their face again. Attendance records are kept." onsubmit="return confirm(this.dataset.confirm);">
+            <tr class="emp-row" data-name="{{ emp['name']|lower }}" data-dept="{{ (emp['department'] or '')|lower }}" data-id="{{ emp['employee_id']|lower }}">
+                <td class="strong">{{ emp['name'] }}</td>
+                <td><code>{{ emp['employee_id'] }}</code></td>
+                <td>{{ emp['email'] }}</td>
+                <td>{{ emp['department'] or '—' }}</td>
+                <td>{% if emp['face_registered'] %}<span class="ui-badge good">Registered</span>{% else %}<span class="ui-badge late">Not registered</span>{% endif %}</td>
+                <td style="white-space:nowrap; text-align:right;">
+                    <form method="POST" action="{{ url_for('admin_reset_face', user_id=emp['id']) }}" style="display:inline;" data-confirm="Reset face for {{ emp['name'] }} ({{ emp['employee_id'] }})? Their face samples will be deleted and they must register again. Attendance records are kept." onsubmit="return confirm(this.dataset.confirm);">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn-sm" title="Clear face samples so the student can register again">
-                            <i class="fa-solid fa-arrows-rotate"></i> Reset face
-                        </button>
+                        <button type="submit" class="ui-btn" style="padding:.3rem .7rem;">Reset face</button>
                     </form>
-                    <form method="POST" action="{{ url_for('manage_employees') }}" style="display:inline;" onsubmit="return confirm('Delete this student and all their data? This cannot be undone.');">
+                    <form method="POST" action="{{ url_for('manage_employees') }}" style="display:inline;" data-confirm="Remove {{ emp['name'] }} and all their attendance? This cannot be undone." onsubmit="return confirm(this.dataset.confirm);">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="user_id" value="{{ emp['id'] }}">
-                        <button type="submit" class="btn-sm" style="background:rgba(244,63,94,0.06); border-color:rgba(244,63,94,0.12); color:var(--accent-rose);">
-                            <i class="fa-solid fa-trash-can"></i> Remove
-                        </button>
+                        <button type="submit" class="ui-btn danger" style="padding:.3rem .7rem;">Remove</button>
                     </form>
                 </td>
             </tr>
             {% else %}
-            <tr>
-                <td colspan="6" style="text-align:center; padding:3rem; color:var(--text-muted);">
-                    <i class="fa-solid fa-users-slash" style="font-size:1.5rem; margin-bottom:0.5rem; display:block; opacity:0.3;"></i>
-                    No students in the system yet.
-                </td>
-            </tr>
+            <tr><td colspan="6" class="ui-empty">No students yet. Use Add Student.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
+</div>
 </div>
 
 <!-- ADD EMPLOYEE MODAL -->
@@ -107,16 +60,16 @@
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.65rem;">
                     <div>
                         <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Student ID</label>
-                        <input type="text" id="addEmpId" class="form-control" required placeholder="EMP001" maxlength="15" style="width:100%; text-transform:uppercase;" oninput="this.value=this.value.replace(/[^A-Za-z0-9\-]/g,'').toUpperCase()">
+                        <input type="text" id="addEmpId" class="form-control" required placeholder="12345678" maxlength="15" style="width:100%; text-transform:uppercase;" oninput="this.value=this.value.replace(/[^A-Za-z0-9\-]/g,'').toUpperCase()">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Full Name</label>
-                        <input type="text" id="addName" class="form-control" required placeholder="John Doe" maxlength="50" style="width:100%;" oninput="this.value=this.value.replace(/\s{2,}/g,' ')">
+                        <input type="text" id="addName" class="form-control" required placeholder="Full name" maxlength="50" style="width:100%;" oninput="this.value=this.value.replace(/\s{2,}/g,' ')">
                     </div>
                 </div>
                 <div>
                     <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.3rem; font-weight:600;">Email</label>
-                    <input type="email" id="addEmail" class="form-control" required placeholder="john@domain.com" maxlength="100" style="width:100%;">
+                    <input type="email" id="addEmail" class="form-control" required placeholder="name@example.com" maxlength="100" style="width:100%;">
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.65rem;">
                     <div>
@@ -179,8 +132,10 @@ function openAddModal() {
     document.getElementById('addEmpForm').reset();
 }
 
+let studentAdded = false;
 function closeAddModal() {
     document.getElementById('addEmpModal').style.display = 'none';
+    if (studentAdded) location.reload();   // show the new student in the list
 }
 
 function submitAddEmployee() {
@@ -214,6 +169,7 @@ function submitAddEmployee() {
 
         if (data.success) {
             showAddResult(data.msg, true);
+            studentAdded = true;
             document.getElementById('genPwSection').style.display = 'block';
             document.getElementById('genPwValue').textContent = data.generated_password;
             showToast(data.msg, 'success');

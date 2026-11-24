@@ -1,59 +1,35 @@
 {% extends 'base.html' %}
 {% block title %}Scan Log - SecureFace Attendance{% endblock %}
-{% block page_title %}Scan Event Log{% endblock %}
-{% block page_subtitle %}Every stage reached by the live pipeline, most recent first — for reviewing a test session{% endblock %}
+{% block page_title %}Spoof Log{% endblock %}
+{% block page_subtitle %}Every step the scanner reached, newest first{% endblock %}
 
 {% block content %}
-<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:1rem;">
-    Showing the most recent {{ rows|length }} scan events (max 300). Each row is the deepest
-    pipeline stage a single camera frame/request reached: NO_FACE, MULTI_FACE, FACE_MOVED
-    (same-face consistency reset), SPOOF, UNCERTAIN, RECOGNIZED (identity matched, challenge
-    pending), UNRECOGNIZED (live but no match), CHALLENGE_PASSED, ATTENDANCE_MARKED, or
-    ALREADY_MARKED. Repeated identical states across consecutive frames are logged once, not
-    once per frame.
-</p>
+<div class="ui-page">
+    {% include '_log_tabs.html' %}
 
-<p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.75rem;">
-    Frame score = this frame's P(spoof). Average = the 5-frame average the decision used.
-    IoU = overlap of this frame's face box with the previous frame's (below 0.25 counts as a different face).
-    Times are UTC.
-</p>
-
-<div class="table-panel">
-    <div class="table-scroll">
-    <table>
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Stage</th>
-                <th>Frame score</th>
-                <th>Average</th>
-                <th>IoU</th>
-                <th>Test Label</th>
-                <th>Session</th>
-                <th>User</th>
-                <th>Detail</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-            <tr>
-                <td style="white-space:nowrap;">{{ row['created_at'] }}</td>
-                <td><span class="state-badge state-{{ row['stage'] }}">{{ row['stage'] }}</span></td>
-                <td class="num">{{ '%.4g'|format(row['p_spoof_frame']) if row['p_spoof_frame'] is not none else '—' }}</td>
-                <td class="num">{{ '%.4g'|format(row['p_spoof_avg']) if row['p_spoof_avg'] is not none else '—' }}</td>
-                <td class="num">{{ '%.3f'|format(row['iou']) if row['iou'] is not none else '—' }}</td>
-                <td style="color:#f59e0b; font-size:0.75rem;">{{ row['test_label'] or '' }}</td>
-                <td style="font-family:monospace; font-size:0.72rem;">{{ row['session_id'][:8] }}</td>
-                <td>{% if row['user_name'] %}{{ row['user_name'] }} ({{ row['employee_id'] }}){% endif %}</td>
-                <td style="font-size:0.75rem; color:var(--text-muted);">{{ row['detail'] or '' }}</td>
-            </tr>
-            {% endfor %}
-            {% if not rows %}
-            <tr><td colspan="9"><div class="empty-state"><i class="fa-regular fa-folder-open"></i>No scan events logged yet.</div></td></tr>
-            {% endif %}
-        </tbody>
-    </table>
+    <div class="ui-card flush">
+        <div class="ui-card-title">{{ rows|length }} recent events <small>Latest 300. Times are UTC. IoU below 0.25 = treated as a different face.</small></div>
+        <div class="ui-table-wrap">
+            <table class="ui-table">
+                <thead><tr><th>Time</th><th>Step</th><th class="num">Score</th><th class="num">5-frame avg</th><th class="num">IoU</th><th>Student</th><th>Detail</th></tr></thead>
+                <tbody>
+                {% for row in rows %}
+                    {% set st = row['stage'] %}
+                    <tr>
+                        <td style="white-space:nowrap;">{{ row['created_at'] }}</td>
+                        <td><span class="ui-badge {% if st in ('ATTENDANCE_MARKED', 'ALREADY_MARKED', 'RECOGNIZED', 'CHALLENGE_PASSED', 'LIVE') %}good{% elif st == 'SPOOF' %}bad{% elif st == 'UNCERTAIN' %}unsure{% elif st in ('UNRECOGNIZED', 'MULTI_FACE', 'FACE_MOVED') %}late{% else %}muted{% endif %}">{{ st }}</span></td>
+                        <td class="num">{{ '%.4f'|format(row['p_spoof_frame']) if row['p_spoof_frame'] is not none else '—' }}</td>
+                        <td class="num">{{ '%.4f'|format(row['p_spoof_avg']) if row['p_spoof_avg'] is not none else '—' }}</td>
+                        <td class="num">{{ '%.3f'|format(row['iou']) if row['iou'] is not none else '—' }}</td>
+                        <td>{% if row['user_name'] %}{{ row['user_name'] }} ({{ row['employee_id'] }}){% endif %}</td>
+                        <td style="font-size:.76rem; color:var(--text-muted);">{{ row['test_label'] ~ ' · ' if row['test_label'] }}{{ row['detail'] or '' }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="7" class="ui-empty">No scan events yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

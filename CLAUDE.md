@@ -6,8 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Flask face-recognition attendance app ("SecureFace Attendance") with a self-trained
 liveness/anti-spoofing model (MobileNetV3-Small, trained in `training/`) in front of
-ArcFace recognition. It has three parts: a **common scanner** (`/`, admin-approved devices
-only), **student pages** (register, register face once, view own attendance) and **admin
+ArcFace recognition. It has three parts: a **common scanner** (`/`; optionally limited to admin-approved devices), **student pages** (register, register face once, view own attendance) and **admin
 pages** (attendance, students, settings, scanner devices, logs, Results, Test Mode,
 Pipeline View). Read `docs/HANDOVER.md` before assuming anything about *why* something is
 built a certain way.
@@ -24,7 +23,7 @@ cp .env.example .env   # SECRET_KEY, FACE_ENCRYPTION_KEY
 ./venv/bin/python app.py                 # http://localhost:5000
 FLASK_DEBUG=1 ./venv/bin/python app.py   # + scanner test-label dropdown, /admin/dev/clear_today_attendance
 
-# Tests: 67; each test uses a fresh temp DB, never database/smartface.db.
+# Tests: 73; each test uses a fresh temp DB, never database/smartface.db.
 # Sample images are read from the sibling anti_spoof_attendance project.
 ./venv/bin/pytest -v                     # pytest.ini limits collection to tests/
 
@@ -33,17 +32,18 @@ FLASK_DEBUG=1 ./venv/bin/python app.py   # + scanner test-label dropdown, /admin
 ./venv/bin/python scripts/create_test_student.py
 ./venv/bin/python scripts/reset_password.py you@example.com
 
-# Real pipeline latency against a running server (scanner must be approved;
-# pass that browser's scanner_device cookie value)
+# Real pipeline latency against a running server (if "Require approved scanner
+# device" is on, pass an approved browser's scanner_device cookie value)
 SCANNER_DEVICE_TOKEN=... ./venv/bin/python scripts/measure_pipeline_latency.py [base_url]
 
 # PDF report (numbers read from training/results/summary.json + docs/pipeline_latency_*.txt)
 ./venv/bin/python generate_report.py
 ```
 
-After a fresh start, nothing is approved as a scanner: log in as admin on the scanner
-browser → Settings → Scanner Devices → "Set this device as scanner". Otherwise `/`
-returns 403 "This device is not an approved scanner."
+Scanner-device approval is a setting, **off by default** (Settings → Scanner →
+"Require approved scanner device"): when off, any browser can open `/` and mark
+attendance. When on, only browsers approved in Settings → Approved scanner devices can;
+others see "This device is not an approved scanner." and the API returns 403.
 
 Port 5000 can be taken by macOS AirPlay Receiver (`lsof -ti:5000 | xargs kill -9`).
 The camera works on `http://localhost` without HTTPS; for other devices use ngrok
@@ -59,7 +59,7 @@ inside it (`Config.BASE_DIR` follows the copy).
 
 ### Scan pipeline (`app.py` → `api_recognize_face()`)
 
-1. Approved-device check (`_current_scanner_device()`: SHA-256 of the `scanner_device` cookie in `scanner_devices`).
+1. Device check `_scanner_allowed()`: skipped unless the `require_scanner_approval` setting is `1`; then the SHA-256 of the `scanner_device` cookie must be in `scanner_devices`.
 2. BlazeFace detect (0 → `NO_FACE`, >1 → `MULTI_FACE`).
 3. Same-face tracking by **IoU** of consecutive face boxes; `< SAME_FACE_MIN_IOU` (0.25) → `FACE_MOVED`, session reset.
 4. `crop_face()` (`liveness/face_utils.py`, **must stay byte-identical** to training: 25% margin, 224×224, ImageNet norm; guarded by `tests/test_crop_identical.py`).
@@ -73,7 +73,7 @@ inside it (`Config.BASE_DIR` follows the copy).
 ### Admin-only tools (none of these mark attendance)
 - **Pipeline View** (`/admin/pipeline_view`): per-frame box/crop/224 input/score; Grad-CAM on demand via `utils/gradcam.py` (copied from `training/src/gradcam.py`) on a deep copy of the model, layer `feature_extractor.features[12]`. Saves nothing to disk.
 - **Test Mode** (`/admin/test_mode`): records real decisions per category into `test_mode_results`; APCER/BPCER/HTER from those counts. Collection mode saves crops to `data/domain_adaptation/` (gitignored) for `docs/domain_adaptation_plan.md`.
-- **Spoof Log** (CSV export), **Scan Log**, **Results** (reads `training/results/summary.json` at request time; separate live-test section).
+- **Spoof Log** (CSV export) with **Scan Log** as its second tab, **Results** (reads `training/results/summary.json` at request time; separate live-test section).
 
 ### Config is admin-tunable, not hardcoded
 `liveness_threshold`, `face_tolerance`, `min_face_samples`, late cut-off and email settings

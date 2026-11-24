@@ -298,14 +298,18 @@ def _smoothed_prob_spoof(raw_prob):
     return sum(recent) / len(recent)
 
 
-def _reset_liveness_session():
+def _reset_liveness_session(keep_log_dedup=False):
     """Clears all per-session liveness/challenge state -- called on no-face,
     multi-face, an abrupt face-position jump, or a logged-out SPOOF/UNCERTAIN
-    decision, so a new physical subject always starts from a clean slate."""
+    decision, so a new physical subject always starts from a clean slate.
+
+    keep_log_dedup: NO_FACE / MULTI_FACE keep the scan-log de-dup key, so an
+    empty camera logs NO_FACE once instead of on every frame."""
     session.pop('recent_probs', None)
     session.pop('last_bbox', None)
     session.pop('last_logged_decision', None)
-    session.pop('last_logged_stage', None)
+    if not keep_log_dedup:
+        session.pop('last_logged_stage', None)
     session.pop('mask_streak', None)
     _clear_blink_attempt()
 
@@ -451,10 +455,20 @@ def _current_scanner_device():
     return row
 
 
+def _scanner_approval_required():
+    return get_setting('require_scanner_approval', '0') == '1'
+
+
+def _scanner_allowed():
+    """Any device may scan unless the admin turned on "Require approved
+    scanner device"; then only approved devices (cookie) may."""
+    return not _scanner_approval_required() or bool(_current_scanner_device())
+
+
 @app.route("/")
 def home():
     from contextlib import closing
-    approved = bool(_current_scanner_device())
+    approved = _scanner_allowed()
     with closing(get_db_connection()) as conn:
         enrolled = bool(conn.execute("SELECT 1 FROM users WHERE face_registered=1 AND face_embedding IS NOT NULL LIMIT 1").fetchone())
     return render_template("scanner.html", approved=approved, enrolled=enrolled,
@@ -695,8 +709,8 @@ def admin_dashboard():
     today = datetime.now().strftime("%Y-%m-%d")
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    present_today = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (today,)).fetchone()[0]
-    present_yesterday = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (yesterday,)).fetchone()[0]
+    present_today = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status IN ('Present', 'Late')", (today,)).fetchone()[0]
+    present_yesterday = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status IN ('Present', 'Late')", (yesterday,)).fetchone()[0]
 
     # Read the stored `status` column (set once, at check-in time, using
     # whatever the late cutoff was *then*) rather than recomputing from
@@ -734,11 +748,17 @@ def admin_dashboard():
         ORDER BY attendance.time DESC LIMIT 20
     ''', (today,)).fetchall()
 
-    weekly_data = []
+    weekly_data, weekly_late, weekly_labels = [], [], []
     for i in range(6, -1, -1):
-        d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        count = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (d,)).fetchone()[0]
+        day = datetime.now() - timedelta(days=i)
+        d = day.strftime("%Y-%m-%d")
+        count = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status IN ('Present', 'Late')", (d,)).fetchone()[0]
+        late_n = conn.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status = 'Late'", (d,)
+        ).fetchone()[0]
         weekly_data.append(count)
+        weekly_late.append(late_n)
+        weekly_labels.append(day.strftime("%a %d"))
 
     admin_user = conn.execute("SELECT * FROM users WHERE id = ?", (session["user_id"],)).fetchone()
 
@@ -758,6 +778,8 @@ def admin_dashboard():
                            late_trend=late_trend,
                            recent_attendance=recent_attendance,
                            weekly_data=weekly_data,
+                           weekly_late=weekly_late,
+                           weekly_labels=weekly_labels,
                            admin=admin_user,
                            employees_list=employees_list,
                            debug_mode=DEBUG_MODE)
@@ -933,6 +955,7 @@ def admin_spoof_log():
 # Result files read at request time from training/ (never copied as numbers into code).
 RESULTS_SUMMARY_PATH = os.path.join(Config.BASE_DIR, "training", "results", "summary.json")
 LATENCY_FILE_PATH = os.path.join(Config.BASE_DIR, "docs", "pipeline_latency_2026-11-07.txt")
+TRAINING_HISTORY_PATH = os.path.join(Config.BASE_DIR, "training", "outputs", "plots", "v2_cropped", "training_history.json")
 RESULT_PLOTS = {
     "training_curves": "training/outputs/plots/v2_cropped/training_curves.png",
     "confusion_test": "training/outputs/plots/v2_cropped/confusion_matrix_v2_cropped_test.png",
@@ -959,8 +982,19 @@ def admin_results():
     except Exception:
         latency_text = None
     plots = {k: os.path.isfile(os.path.join(Config.BASE_DIR, v)) for k, v in RESULT_PLOTS.items()}
+    history = None
+    try:
+        with open(TRAINING_HISTORY_PATH) as fh:
+            history = json.load(fh)
+    except Exception:
+        history = None
+    latency_median_ms = None
+    m = re.search(r"Full round-trip[^\n]*?median=([0-9.]+)ms", latency_text or "")
+    if m:
+        latency_median_ms = float(m.group(1))
     live = _test_mode_metrics(None)
-    return render_template("results.html", s=summary, error=error, plots=plots,
+    return render_template("results.html", s=summary, error=error, plots=plots, history=history,
+                           latency_median_ms=latency_median_ms,
                            latency_text=latency_text, latency_file=os.path.relpath(LATENCY_FILE_PATH, Config.BASE_DIR),
                            live=live)
 
@@ -1299,7 +1333,10 @@ def attendance_history():
     date_to = request.args.get('date_to', '')
     dept_filter = request.args.get('department', '')
     status_filter = request.args.get('status', '')
-    page = int(request.args.get('page', 1))
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except ValueError:
+        page = 1
     per_page = 25
 
     conn = get_db_connection()
@@ -1340,9 +1377,39 @@ def attendance_history():
 
     departments = conn.execute("SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department").fetchall()
 
+    # Summary + one chart (merged from the old Analytics page): last 14 days.
+    total_students = conn.execute("SELECT COUNT(*) FROM users WHERE role='employee'").fetchone()[0]
+    chart_labels, chart_on_time, chart_late = [], [], []
+    for i in range(13, -1, -1):
+        day = datetime.now() - timedelta(days=i)
+        d = day.strftime("%Y-%m-%d")
+        present = conn.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status IN ('Present', 'Late')", (d,)
+        ).fetchone()[0]
+        late = conn.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ? AND status = 'Late'", (d,)
+        ).fetchone()[0]
+        chart_labels.append(day.strftime("%d %b"))
+        chart_on_time.append(present - late)
+        chart_late.append(late)
+    month_start = datetime.now().replace(day=1).strftime("%Y-%m-%d")
+    month_checkins = conn.execute(
+        "SELECT COUNT(*) FROM attendance WHERE date >= ? AND status IN ('Present', 'Late')", (month_start,)
+    ).fetchone()[0]
+    month_late = conn.execute(
+        "SELECT COUNT(*) FROM attendance WHERE date >= ? AND status = 'Late'", (month_start,)
+    ).fetchone()[0]
+
     conn.close()
 
     return render_template("attendance_history.html",
+                           total_students=total_students,
+                           present_today=chart_on_time[-1] + chart_late[-1],
+                           month_checkins=month_checkins,
+                           month_late=month_late,
+                           chart_labels=chart_labels,
+                           chart_on_time=chart_on_time,
+                           chart_late=chart_late,
                            records=records,
                            departments=departments,
                            date_from=date_from,
@@ -1356,96 +1423,10 @@ def attendance_history():
 
 @app.route("/analytics")
 def analytics():
+    """Merged into the Attendance page (summary + chart on top)."""
     if session.get("role") != "admin":
         return redirect(url_for("admin_login"))
-
-    conn = get_db_connection()
-
-    weekly_labels = []
-    weekly_present = []
-    weekly_late = []
-    weekly_absent = []
-    total_emp = conn.execute("SELECT COUNT(*) FROM users WHERE role='employee'").fetchone()[0]
-
-    for i in range(13, -1, -1):
-        d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        label = (datetime.now() - timedelta(days=i)).strftime("%d %b")
-        weekly_labels.append(label)
-
-        present = conn.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = ?", (d,)).fetchone()[0]
-        late = conn.execute(
-            "SELECT COUNT(*) FROM attendance WHERE date = ? AND status = 'Late'", (d,)
-        ).fetchone()[0]
-
-        weekly_present.append(present)
-        weekly_late.append(late)
-        weekly_absent.append(max(0, total_emp - present))
-
-    month_start = datetime.now().replace(day=1).strftime("%Y-%m-%d")
-    dept_data = conn.execute('''
-        SELECT users.department, COUNT(DISTINCT attendance.user_id) as unique_present, COUNT(*) as total_records
-        FROM attendance
-        JOIN users ON attendance.user_id = users.id
-        WHERE attendance.date >= ?
-        GROUP BY users.department
-        ORDER BY total_records DESC
-    ''', (month_start,)).fetchall()
-
-    dept_labels = [d['department'] or 'Unknown' for d in dept_data]
-    dept_values = [d['total_records'] for d in dept_data]
-
-    this_month_present = conn.execute(
-        "SELECT COUNT(*) FROM attendance WHERE date >= ? AND status IN ('Present', 'Late')",
-        (month_start,)
-    ).fetchone()[0]
-
-    this_month_late = conn.execute(
-        "SELECT COUNT(*) FROM attendance WHERE date >= ? AND status = 'Late'",
-        (month_start,)
-    ).fetchone()[0]
-
-    days_elapsed = (datetime.now() - datetime.strptime(month_start, "%Y-%m-%d")).days + 1
-    avg_daily = round(this_month_present / max(1, days_elapsed), 1)
-    avg_rate = round((avg_daily / max(1, total_emp)) * 100, 1) if total_emp > 0 else 0
-
-    top_late = conn.execute('''
-        SELECT users.name, users.employee_id, users.department, COUNT(*) as late_count
-        FROM attendance
-        JOIN users ON attendance.user_id = users.id
-        WHERE attendance.status = 'Late' AND attendance.date >= ?
-        GROUP BY attendance.user_id
-        ORDER BY late_count DESC
-        LIMIT 5
-    ''', (month_start,)).fetchall()
-
-    top_punctual = conn.execute('''
-        SELECT users.name, users.employee_id, users.department,
-               COUNT(*) as total_days,
-               SUM(CASE WHEN attendance.status = 'Present' THEN 1 ELSE 0 END) as present_days
-        FROM attendance
-        JOIN users ON attendance.user_id = users.id
-        WHERE attendance.date >= ?
-        GROUP BY attendance.user_id
-        ORDER BY present_days DESC
-        LIMIT 5
-    ''', (month_start,)).fetchall()
-
-    conn.close()
-
-    return render_template("analytics.html",
-                           weekly_labels=weekly_labels,
-                           weekly_present=weekly_present,
-                           weekly_late=weekly_late,
-                           weekly_absent=weekly_absent,
-                           dept_labels=dept_labels,
-                           dept_values=dept_values,
-                           total_emp=total_emp,
-                           avg_rate=avg_rate,
-                           avg_daily=avg_daily,
-                           this_month_present=this_month_present,
-                           this_month_late=this_month_late,
-                           top_late=top_late,
-                           top_punctual=top_punctual)
+    return redirect(url_for("attendance_history"))
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -1489,6 +1470,8 @@ def settings():
         set_setting('email_trigger_hour', email_hour)
         set_setting('email_trigger_minute', email_minute)
         set_setting('hr_email', hr_email_val)
+        set_setting('require_scanner_approval',
+                    '1' if request.form.get('require_scanner_approval') == '1' else '0')
 
         # Update scheduler
         global scheduler
@@ -1523,6 +1506,7 @@ def settings():
         'email_trigger_hour': get_setting('email_trigger_hour', '18'),
         'email_trigger_minute': get_setting('email_trigger_minute', '0'),
         'hr_email': get_setting('hr_email', ''),
+        'require_scanner_approval': get_setting('require_scanner_approval', '0'),
     }
 
     conn = get_db_connection()
@@ -1603,6 +1587,8 @@ def export_csv():
 
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
+    dept_filter = request.args.get('department', '')
+    status_filter = request.args.get('status', '')
 
     conn = get_db_connection()
     query = '''
@@ -1620,6 +1606,12 @@ def export_csv():
     if date_to:
         query += " AND attendance.date <= ?"
         params.append(date_to)
+    if dept_filter:
+        query += " AND users.department = ?"
+        params.append(dept_filter)
+    if status_filter:
+        query += " AND attendance.status = ?"
+        params.append(status_filter)
 
     query += " ORDER BY attendance.date DESC, attendance.time DESC"
 
@@ -1852,8 +1844,9 @@ def api_recognize_face():
             if isinstance(raw_label, str) and raw_label.strip():
                 test_label = raw_label.strip()[:40]
 
-        # Only admin-approved scanner devices may run the pipeline / mark attendance.
-        if not _current_scanner_device():
+        # When "Require approved scanner device" is on, only approved devices
+        # may run the pipeline / mark attendance.
+        if not _scanner_allowed():
             return jsonify({
                 "success": False, "recognized": False,
                 "state": "DEVICE_NOT_APPROVED", "device_not_approved": True,
@@ -1878,7 +1871,7 @@ def api_recognize_face():
         timings["detect_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
         if len(detections) == 0:
-            _reset_liveness_session()
+            _reset_liveness_session(keep_log_dedup=True)
             _log_scan_event("NO_FACE", test_label=test_label)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({
@@ -1901,7 +1894,7 @@ def api_recognize_face():
         }
 
         if len(detections) > 1:
-            _reset_liveness_session()
+            _reset_liveness_session(keep_log_dedup=True)
             _log_scan_event("MULTI_FACE", test_label=test_label)
             timings["total_ms"] = round((time.perf_counter() - t_request_start) * 1000, 1)
             return jsonify({

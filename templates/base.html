@@ -8,6 +8,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/fx.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ui.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
@@ -32,7 +33,6 @@
             </a>
             
             {% if session.get('role') == 'admin' %}
-            <div class="nav-group-title">Main</div>
             <div class="nav-links">
                 <a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
                     <i class="fa-solid fa-table-cells-large"></i> Dashboard
@@ -42,9 +42,6 @@
                 </a>
                 <a href="{{ url_for('attendance_history') }}" class="{% if request.endpoint == 'attendance_history' %}active{% endif %}">
                     <i class="fa-solid fa-calendar-check"></i> Attendance
-                </a>
-                <a href="{{ url_for('analytics') }}" class="{% if request.endpoint == 'analytics' %}active{% endif %}">
-                    <i class="fa-solid fa-chart-line"></i> Analytics
                 </a>
             </div>
 
@@ -56,30 +53,18 @@
                 <a href="{{ url_for('admin_test_mode') }}" class="{% if request.endpoint == 'admin_test_mode' %}active{% endif %}">
                     <i class="fa-solid fa-flask"></i> Test Mode
                 </a>
-                <a href="{{ url_for('admin_spoof_log') }}" class="{% if request.endpoint == 'admin_spoof_log' %}active{% endif %}">
+                <a href="{{ url_for('admin_spoof_log') }}" class="{% if request.endpoint in ('admin_spoof_log', 'admin_scan_log') %}active{% endif %}">
                     <i class="fa-solid fa-user-secret"></i> Spoof Log
-                </a>
-                <a href="{{ url_for('admin_scan_log') }}" class="{% if request.endpoint == 'admin_scan_log' %}active{% endif %}">
-                    <i class="fa-solid fa-list"></i> Scan Log
                 </a>
                 <a href="{{ url_for('admin_results') }}" class="{% if request.endpoint == 'admin_results' %}active{% endif %}">
                     <i class="fa-solid fa-chart-column"></i> Results
                 </a>
             </div>
 
-            <div class="nav-group-title">System</div>
-            <div class="nav-links">
+            <div class="nav-links" style="margin-top:0.5rem;">
                 <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
                     <i class="fa-solid fa-gear"></i> Settings
                 </a>
-                <a href="{{ url_for('export_csv') }}" title="Download attendance CSV">
-                    <i class="fa-solid fa-download"></i> Export Data
-                </a>
-            </div>
-
-            <div class="nav-group-title">Quick Actions</div>
-            <div class="nav-links">
-                <a href="{{ url_for('scanner') }}"><i class="fa-solid fa-camera"></i> Scan Face</a>
             </div>
 
             {% else %}

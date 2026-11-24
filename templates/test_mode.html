@@ -1,99 +1,93 @@
 {% extends 'base.html' %}
 {% block title %}Test Mode - SecureFace Attendance{% endblock %}
 {% block page_title %}Test Mode{% endblock %}
-{% block page_subtitle %}Show the camera a real face or an attack and count the liveness model's real decisions. Never marks attendance.{% endblock %}
+{% block page_subtitle %}Measure the liveness model on real faces and attacks. Never marks attendance.{% endblock %}
 
 {% block content %}
 <style>
-.tm-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); gap:1rem; }
-.tm-video { position:relative; background:#000; border-radius:12px; overflow:hidden; }
-.tm-video video { width:100%; display:block; transform:scaleX(-1); }
-.tm-video canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.tm-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.4rem; margin-bottom:0.85rem; }
+.tm-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:.45rem; }
 .tm-cats input { position:absolute; opacity:0; pointer-events:none; }
-.tm-cats label { display:block; text-align:center; padding:0.55rem 0.4rem; border:1px solid var(--border); border-radius:10px; font-size:0.78rem; font-weight:700; color:var(--text-secondary); cursor:pointer; }
-.tm-cats input:checked + label { border-color:var(--accent-emerald); color:var(--accent-emerald); background:rgba(16,185,129,0.08); }
-.tm-cats small { display:block; font-weight:500; font-size:0.65rem; color:var(--text-muted); }
-.tm-decision { font-size:1.6rem; font-weight:800; min-height:2.2rem; }
-.tm-actions { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem; align-items:center; }
-.tm-status { font-size:0.78rem; color:var(--text-muted); margin-top:0.5rem; min-height:1.2em; }
-@media (max-width: 900px) { .tm-grid { grid-template-columns:1fr; } }
+.tm-cats label { display:block; text-align:center; padding:.55rem .4rem; border:1px solid var(--ui-line); border-radius:10px; font-size:.8rem; font-weight:700; color:var(--text-secondary); cursor:pointer; }
+.tm-cats input:checked + label { border-color:var(--ui-good); color:var(--ui-good); background:rgba(16,185,129,.08); }
+.tm-cats input:focus-visible + label { outline:2px solid var(--ui-good); }
+.tm-cats small { display:block; font-weight:500; font-size:.68rem; color:var(--text-muted); }
+.tm-grid { grid-template-columns:minmax(0, .8fr) minmax(0, 1.2fr); }
+@media (max-width: 1000px) { .tm-grid { grid-template-columns:1fr; } }
+#tmTable .ui-table th, #tmTable .ui-table td { padding:.5rem .5rem; }
+#tmTable .ui-table td.strong { white-space:nowrap; }
+.tm-decision { font-size:1.4rem; font-weight:800; text-align:center; min-height:2rem; }
 </style>
 
-<div class="tm-grid">
-    <div class="glass-card">
-        <div class="glass-card-header"><span class="glass-card-title"><i class="fa-solid fa-video"></i> Camera</span></div>
-        <div class="glass-card-body">
-            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.4rem; font-weight:600;">1. What are you showing the camera?</div>
-            <div class="tm-cats" role="radiogroup">
+<div class="ui-page">
+    <ol class="ui-steps">
+        <li>Choose what you'll show the camera.</li>
+        <li>Press Start and hold it in front of the camera for about 10 seconds.</li>
+        <li>Press Stop and see the result.</li>
+    </ol>
+
+    <div class="ui-grid-2 tm-grid">
+        <div class="ui-card">
+            <div class="ui-card-title">Camera</div>
+            <div class="tm-cats" role="radiogroup" aria-label="What are you showing the camera?">
                 {% for key, (label, bona) in categories.items() %}
                 <input type="radio" name="tmCat" id="cat_{{ key }}" value="{{ key }}">
                 <label for="cat_{{ key }}">{{ label }}<small>{{ 'real person' if bona else 'attack' }}</small></label>
                 {% endfor %}
             </div>
-            <details id="tmCollect" style="margin-bottom:0.85rem; border:1px solid var(--border); border-radius:10px; padding:0.6rem 0.75rem;">
-                <summary style="cursor:pointer; font-size:0.78rem; font-weight:700; color:var(--text-secondary);">
-                    <i class="fa-solid fa-database"></i> Collection mode (domain adaptation data)
-                </summary>
-                <p style="font-size:0.7rem; color:var(--text-muted); margin:0.5rem 0;">
-                    When on, the face crop of each recorded frame (at most one per second) is saved with its label and scores
-                    to <code>data/domain_adaptation/</code> (not in git). See <code>docs/domain_adaptation_plan.md</code>.
-                    Only collect from people who agreed to it.
-                </p>
-                <label style="display:flex; gap:0.5rem; align-items:center; font-size:0.8rem; font-weight:700; margin-bottom:0.5rem;">
-                    <input type="checkbox" id="cOn"> Save face crops
-                </label>
-                <div class="filter-row" style="margin-bottom:0.25rem;">
-                    <div><label for="cPerson">Person ID</label><input id="cPerson" class="form-control" maxlength="20" placeholder="P01"></div>
-                    <div><label for="cGlasses">Glasses</label><select id="cGlasses" class="form-control"><option value="no_glasses">No glasses</option><option value="glasses">Glasses</option></select></div>
-                    <div><label for="cLight">Light</label><select id="cLight" class="form-control"><option value="normal">Normal</option><option value="dim">Dim</option></select></div>
-                    <div><label for="cSession">Session</label><select id="cSession" class="form-control"><option value="1">1 (adaptation)</option><option value="2">2 (test only)</option></select></div>
-                </div>
-                <div id="cCounts" style="font-size:0.72rem; color:var(--text-muted);"></div>
-            </details>
-            <div class="tm-video">
+            <div class="face-view" style="margin-top:1rem;">
                 <video id="tmVideo" autoplay muted playsinline></video>
-                <canvas id="tmOverlay"></canvas>
+                <canvas id="tmView" width="480" height="480" aria-label="Camera view"></canvas>
             </div>
-            <div class="tm-actions">
-                <button type="button" class="btn-primary" id="tmToggle" disabled><i class="fa-solid fa-play"></i> Start recording</button>
-                <button type="button" class="btn-sm" id="tmNewSession"><i class="fa-solid fa-rotate"></i> New test session</button>
+            <div class="tm-decision" id="tmDecision" style="margin-top:.75rem;">—</div>
+            <div style="display:flex; gap:.6rem; justify-content:center; margin-top:.5rem; flex-wrap:wrap;">
+                <button type="button" class="ui-btn primary" id="tmToggle" disabled><i class="fa-solid fa-play"></i> Start</button>
+                <button type="button" class="ui-btn" id="tmNewSession">New test session</button>
             </div>
-            <div class="tm-status" id="tmStatus">Choose a category, then press Start recording.</div>
-            <div style="margin-top:0.75rem; display:flex; align-items:baseline; gap:0.75rem; flex-wrap:wrap;">
-                <div class="tm-decision" id="tmDecision">—</div>
-                <div class="num" id="tmScores" style="color:var(--text-muted);"></div>
-            </div>
-        </div>
-    </div>
+            <p class="ui-hint center" id="tmStatus" style="margin-top:.6rem;">Choose what you'll show the camera.</p>
 
-    <div class="glass-card">
-        <div class="glass-card-header" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <span class="glass-card-title"><i class="fa-solid fa-table"></i> Results</span>
-            <select id="tmSessionSel" class="form-control" style="max-width:260px; padding:0.4rem 0.6rem; font-size:0.75rem;">
-                <option value="{{ current_session }}" selected>This session ({{ current_session }})</option>
-                <option value="all">All sessions</option>
-                {% for s in sessions if s['test_session'] != current_session %}
-                <option value="{{ s['test_session'] }}">{{ s['started'] }} UTC · {{ s['n'] }} frames</option>
-                {% endfor %}
-            </select>
+            <details id="tmCollect" style="margin-top:1rem; border-top:1px solid var(--ui-line); padding-top:.75rem;">
+                <summary style="cursor:pointer; font-size:.82rem; font-weight:700; color:var(--text-secondary);">Collection mode (save face crops for calibration)</summary>
+                <p class="ui-hint" style="margin:.5rem 0;">Saves at most one face crop per second with its label, for webcam calibration. Only collect from people who agreed.</p>
+                <div class="ui-filters">
+                    <label style="flex-direction:row; align-items:center;"><input type="checkbox" id="cOn"> Save face crops</label>
+                    <label>Person ID <input id="cPerson" maxlength="20" placeholder="P01"></label>
+                    <label>Glasses <select id="cGlasses"><option value="no_glasses">No glasses</option><option value="glasses">Glasses</option></select></label>
+                    <label>Light <select id="cLight"><option value="normal">Normal</option><option value="dim">Dim</option></select></label>
+                    <label>Session <select id="cSession"><option value="1">1 (adaptation)</option><option value="2">2 (test only)</option></select></label>
+                </div>
+                <div id="cCounts" class="ui-hint" style="margin-top:.5rem;"></div>
+            </details>
         </div>
-        <div class="glass-card-body">
+
+        <div class="ui-card">
+            <div class="ui-card-title">Results
+                <select id="tmSessionSel" class="ui-btn" style="padding:.35rem .6rem; font-weight:600;" aria-label="Which results">
+                    <option value="{{ current_session }}" selected>This session</option>
+                    <option value="all">All sessions</option>
+                    {% for s in sessions if s['test_session'] != current_session %}
+                    <option value="{{ s['test_session'] }}">{{ s['started'] }} UTC · {{ s['n'] }} frames</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="ui-chart"><canvas id="tmChart"></canvas></div>
+            <div class="ui-legend" style="margin:.5rem 0 .9rem;">
+                <span><i style="background:var(--ui-good)"></i> Correct</span>
+                <span><i style="background:var(--ui-unsure)"></i> Uncertain (retry)</span>
+                <span><i style="background:var(--ui-bad)"></i> Wrong</span>
+            </div>
             <div id="tmTable"></div>
-            <p style="font-size:0.7rem; color:var(--text-muted); margin-top:0.75rem; line-height:1.5;">
-                One row per camera frame with exactly one face, using the scanner's own decision (average of the last 5 frames, same thresholds).
-                Real person: correct = LIVE, wrong = SPOOF. Attack: correct = SPOOF, wrong = LIVE.
-                UNCERTAIN means "retry" and is counted separately.
-                APCER = attack frames judged LIVE. BPCER = real-person frames judged SPOOF.
-                HTER for an attack category = (its APCER + overall BPCER) / 2.
-                Frames with no face or several faces are recorded but not counted.
-            </p>
+            <div class="ui-meaning">
+                <div><b>APCER</b>: how often an attack was wrongly accepted as a real face.</div>
+                <div><b>BPCER</b>: how often a real face was wrongly rejected as an attack.</div>
+                <div><b>HTER</b>: the average of the two. Lower is better.</div>
+            </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chartjs/dist/chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 <script>
 (function () {
@@ -102,44 +96,54 @@
     let running = false, busy = false, viewSession = {{ current_session|tojson }};
     const toggleBtn = document.getElementById('tmToggle');
     const statusEl = document.getElementById('tmStatus');
-    const overlay = document.getElementById('tmOverlay');
     const video = document.getElementById('tmVideo');
+    const view = createFaceView('tmVideo', 'tmView');
+    let chart = null;
 
     const pct = x => (x === null || x === undefined) ? '—' : (x * 100).toFixed(2) + '%';
     const category = () => (document.querySelector('input[name="tmCat"]:checked') || {}).value;
 
+    function renderChart(rows) {
+        const shown = rows.filter(r => r.n);
+        const data = {
+            labels: shown.map(r => r.label),
+            datasets: [
+                { label: 'Correct', data: shown.map(r => r.correct), backgroundColor: '#10b981', stack: 's' },
+                { label: 'Uncertain', data: shown.map(r => r.UNCERTAIN), backgroundColor: '#38bdf8', stack: 's' },
+                { label: 'Wrong', data: shown.map(r => r.wrong), backgroundColor: '#f43f5e', stack: 's' },
+            ]
+        };
+        if (chart) { chart.data = data; chart.update('none'); return; }
+        chart = new Chart(document.getElementById('tmChart'), {
+            type: 'bar', data,
+            options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } },
+                       scales: { x: { stacked: true, grid: { display: false }, ticks: { color: '#8b949e' } },
+                                 y: { stacked: true, beginAtZero: true, title: { display: true, text: 'frames', color: '#8b949e' },
+                                      ticks: { color: '#8b949e', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+        });
+    }
+
     function renderTable(m) {
         const el = document.getElementById('tmTable');
+        renderChart(m && m.rows ? m.rows : []);
         if (!m || !m.total) {
-            el.innerHTML = '<div class="empty-state"><i class="fa-solid fa-flask"></i>No frames recorded in this view yet.</div>';
+            el.innerHTML = '<div class="ui-empty">No frames recorded yet.</div>';
             return;
         }
-        let html = '<div class="table-scroll"><table><thead><tr><th>Shown</th><th>Frames</th><th>Correct</th><th>Wrong</th><th>Uncertain</th><th>APCER</th><th>BPCER</th><th>HTER</th></tr></thead><tbody>';
+        let html = '<div class="ui-table-wrap"><table class="ui-table"><thead><tr><th>Shown</th><th class="num">Frames</th><th class="num">Correct</th><th class="num">Uncertain</th><th class="num">Wrong</th><th class="num">APCER</th><th class="num">BPCER</th><th class="num">HTER</th></tr></thead><tbody>';
         m.rows.forEach(r => {
             if (!r.n) return;
-            html += `<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.correct}</td><td class="num">${r.wrong}</td><td class="num">${r.UNCERTAIN}</td>` +
+            html += `<tr><td class="strong">${r.label}</td><td class="num">${r.n}</td><td class="num">${r.correct}</td><td class="num">${r.UNCERTAIN}</td><td class="num">${r.wrong}</td>` +
                     `<td class="num">${pct(r.apcer)}</td><td class="num">${pct(r.bpcer)}</td><td class="num">${pct(r.hter)}</td></tr>`;
         });
-        html += `<tr style="font-weight:700;"><td>Overall</td><td class="num">${m.total}</td><td></td><td></td><td class="num">${m.overall.uncertain_bona + m.overall.uncertain_attack}</td>` +
+        html += `<tr><td class="strong">Overall</td><td class="num">${m.total}</td><td></td><td class="num">${m.overall.uncertain_bona + m.overall.uncertain_attack}</td><td></td>` +
                 `<td class="num">${pct(m.overall.apcer)}</td><td class="num">${pct(m.overall.bpcer)}</td><td class="num">${pct(m.overall.hter)}</td></tr>`;
         el.innerHTML = html + '</tbody></table></div>';
     }
 
     function drawBox(res) {
-        const rect = overlay.getBoundingClientRect();
-        overlay.width = rect.width; overlay.height = rect.height;
-        const ctx = overlay.getContext('2d');
-        ctx.clearRect(0, 0, overlay.width, overlay.height);
         const b = res && res.face_box;
-        if (!b) return;
-        const sx = overlay.width / b.frame_width, sy = overlay.height / b.frame_height;
-        const x = overlay.width - (b.x + b.width) * sx, y = b.y * sy;
-        const color = COLORS[res.decision] || '#f59e0b';
-        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(x, y, b.width * sx, b.height * sy);
-        ctx.font = '700 13px Inter, sans-serif';
-        const label = LABELS[res.decision] || res.decision;
-        ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - 20), ctx.measureText(label).width + 10, 20);
-        ctx.fillStyle = '#000'; ctx.fillText(label, x + 5, Math.max(14, y - 6));
+        view.setBox(b || null, COLORS[res && res.decision] || '#f59e0b', b ? (LABELS[res.decision] || res.decision) : '');
     }
 
     function collectSettings() {
@@ -164,14 +168,14 @@
 
     async function loadMetrics(sess) {
         const el = document.getElementById('tmTable');
-        el.innerHTML = '<div class="loading-state"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading…</div>';
+        el.innerHTML = '<div class="ui-empty">Loading…</div>';
         try {
             const r = await fetch("{{ url_for('api_admin_test_metrics') }}?session=" + encodeURIComponent(sess));
             const res = await r.json();
             if (!r.ok || !res.success) throw new Error(res.msg || r.status);
             renderTable(res.metrics);
         } catch (e) {
-            el.innerHTML = `<div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i>Could not load results: ${e.message}</div>`;
+            el.innerHTML = `<div class="ui-empty">Could not load results: ${e.message}</div>`;
         }
     }
 
@@ -194,11 +198,9 @@
                     const d = document.getElementById('tmDecision');
                     d.textContent = LABELS[res.decision] || res.decision;
                     d.style.color = COLORS[res.decision] || '';
-                    document.getElementById('tmScores').textContent = res.p_spoof_avg !== null
-                        ? `frame ${res.p_spoof_frame.toPrecision(3)} · avg ${res.p_spoof_avg.toPrecision(3)}` : '';
                     drawBox(res);
                     if (viewSession === res.test_session) renderTable(res.metrics);
-                    statusEl.textContent = 'Recording… nothing here marks attendance.' +
+                    if (running) statusEl.textContent = 'Recording… hold it steady. Nothing here marks attendance.' +
                         (collect ? (res.saved ? ' Crop saved.' : '') : '');
                     if (res.collection_counts) renderCounts(res.collection_counts, collect);
                 }
@@ -212,20 +214,20 @@
 
     document.querySelectorAll('input[name="tmCat"]').forEach(r => r.addEventListener('change', () => {
         toggleBtn.disabled = false;
-        statusEl.textContent = running ? 'Category changed. Recording continues.' : 'Press Start recording.';
+        statusEl.textContent = running ? 'Category changed. Recording continues.' : 'Press Start.';
     }));
 
     toggleBtn.addEventListener('click', () => {
         if (running) {
-            running = false; stopCamera();
-            toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start recording';
-            statusEl.textContent = 'Stopped.';
-            drawBox(null);
+            running = false; view.freeze(); stopCamera();   // keep the last frame on screen
+            toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
+            statusEl.textContent = 'Stopped. The result is on the right.';
             return;
         }
         if (!category()) { statusEl.textContent = 'Choose what you are showing the camera first.'; return; }
         statusEl.textContent = 'Starting camera…';
         startCamera('tmVideo');
+        view.start();
         running = true;
         toggleBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
         video.addEventListener('loadeddata', () => loop(), { once: true });
@@ -238,7 +240,7 @@
             if (!r.ok || !res.success) throw new Error(res.msg || r.status);
             const sel = document.getElementById('tmSessionSel');
             const opt = document.createElement('option');
-            opt.value = res.test_session; opt.textContent = `This session (${res.test_session})`;
+            opt.value = res.test_session; opt.textContent = 'This session (new)';
             sel.prepend(opt); sel.value = res.test_session; viewSession = res.test_session;
             renderTable(res.metrics);
             statusEl.textContent = 'New test session started.';

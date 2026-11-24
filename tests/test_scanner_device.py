@@ -2,9 +2,26 @@
 
 import hashlib
 
+import pytest
+
 from tests.helpers import approve_scanner, csrf_token, login
 
 NOT_APPROVED = "This device is not an approved scanner."
+
+
+@pytest.fixture(autouse=True)
+def _require_approval(db):
+    """These tests cover the optional "Require approved scanner device" mode."""
+    db("UPDATE settings SET value = '1' WHERE key = 'require_scanner_approval'")
+
+
+def test_when_setting_is_off_any_device_can_scan(flask_app, db):
+    db("UPDATE settings SET value = '0' WHERE key = 'require_scanner_approval'")
+    c = flask_app.test_client()
+    r = c.get("/")
+    assert r.status_code == 200 and NOT_APPROVED not in r.get_data(as_text=True)
+    r = c.post("/api/recognize_face", json={"image": ""}, headers={"X-CSRFToken": csrf_token(c, "/")})
+    assert r.status_code == 200 and r.get_json()["msg"] == "No image data received."
 
 
 def test_unapproved_device_sees_message_and_api_refuses(flask_app):

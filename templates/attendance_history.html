@@ -1,189 +1,138 @@
 {% extends 'base.html' %}
-{% block title %}Attendance History - SecureFace Attendance{% endblock %}
-{% block page_title %}Attendance History{% endblock %}
-{% block page_subtitle %}Complete records across all students{% endblock %}
+{% block title %}Attendance - SecureFace Attendance{% endblock %}
+{% block page_title %}Attendance{% endblock %}
+{% block page_subtitle %}Summary, trend and every check-in record{% endblock %}
 
 {% block content %}
-<!-- Filters -->
-<form method="GET" action="{{ url_for('attendance_history') }}">
-    <div class="filter-bar">
-        <div class="filter-group">
-            <label>From</label>
-            <input type="date" name="date_from" value="{{ date_from }}">
+<div class="ui-page">
+    <div class="ui-stats">
+        <div class="ui-stat"><div class="ui-stat-label">Students</div><div class="ui-stat-value">{{ total_students }}</div></div>
+        <div class="ui-stat good"><div class="ui-stat-label">Present today</div><div class="ui-stat-value">{{ present_today }}</div></div>
+        <div class="ui-stat good"><div class="ui-stat-label">Check-ins this month</div><div class="ui-stat-value">{{ month_checkins }}</div></div>
+        <div class="ui-stat late"><div class="ui-stat-label">Late this month</div><div class="ui-stat-value">{{ month_late }}</div></div>
+    </div>
+
+    <div class="ui-card">
+        <div class="ui-card-title">Last 14 days <small>Students who checked in per day</small></div>
+        <div class="ui-chart"><canvas id="trendChart"></canvas></div>
+        <div class="ui-legend" style="margin-top:.6rem;">
+            <span><i style="background:var(--ui-good)"></i> On time</span>
+            <span><i style="background:var(--ui-late)"></i> Late</span>
         </div>
-        <div class="filter-group">
-            <label>To</label>
-            <input type="date" name="date_to" value="{{ date_to }}">
-        </div>
-        <div class="filter-group">
-            <label>Department</label>
+    </div>
+
+    <form method="GET" action="{{ url_for('attendance_history') }}" class="ui-card ui-filters">
+        <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>
+        <label>To <input type="date" name="date_to" value="{{ date_to }}"></label>
+        <label>Department
             <select name="department">
                 <option value="">All</option>
                 {% for d in departments %}
                 <option value="{{ d['department'] }}" {% if dept_filter == d['department'] %}selected{% endif %}>{{ d['department'] }}</option>
                 {% endfor %}
             </select>
-        </div>
-        <div class="filter-group">
-            <label>Status</label>
+        </label>
+        <label>Status
             <select name="status">
                 <option value="">All</option>
-                <option value="Present" {% if status_filter == 'Present' %}selected{% endif %}>Present</option>
-                <option value="Late" {% if status_filter == 'Late' %}selected{% endif %}>Late</option>
-                <option value="Absent" {% if status_filter == 'Absent' %}selected{% endif %}>Absent</option>
-                <option value="Leave" {% if status_filter == 'Leave' %}selected{% endif %}>Leave</option>
+                {% for st in ['Present', 'Late', 'Absent', 'Leave'] %}
+                <option value="{{ st }}" {% if status_filter == st %}selected{% endif %}>{{ st }}</option>
+                {% endfor %}
             </select>
-        </div>
-        <button type="submit" class="btn-filter"><i class="fa-solid fa-filter"></i> Apply</button>
-        <a href="{{ url_for('attendance_history') }}" class="btn-sm" style="align-self:flex-end;">Clear</a>
-        <a href="{{ url_for('export_csv', date_from=date_from, date_to=date_to) }}" class="btn-sm" style="align-self:flex-end; margin-left:auto;">
+        </label>
+        <button type="submit" class="ui-btn primary">Apply</button>
+        <a href="{{ url_for('attendance_history') }}" class="ui-btn">Clear</a>
+        <a href="{{ url_for('export_csv', date_from=date_from, date_to=date_to, department=dept_filter, status=status_filter) }}" class="ui-btn push">
             <i class="fa-solid fa-download"></i> Export CSV
         </a>
-    </div>
-</form>
+    </form>
 
-<div class="table-panel">
-    <div class="table-header">
-        <span class="table-title">{{ total_records }} Records</span>
-        <span style="font-size:0.72rem; color:var(--text-muted);">Page {{ page }} of {{ total_pages }}</span>
-    </div>
-    <div style="overflow-x:auto;">
-        <table>
-            <thead>
-                <tr>
-                    <th>Student</th>
-                    <th>ID</th>
-                    <th>Department</th>
-                    <th>Date</th>
-                    <th>Check-in</th>
-                    <th>Method</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
+    <div class="ui-card flush">
+        <div class="ui-card-title">{{ total_records }} records <small>Page {{ page }} of {{ total_pages }}</small></div>
+        <div class="ui-table-wrap">
+            <table class="ui-table">
+                <thead><tr><th>Student</th><th>Student ID</th><th>Department</th><th>Date</th><th>Time</th><th>Status</th><th></th></tr></thead>
+                <tbody>
                 {% for r in records %}
-                <tr>
-                    <td>
-                        <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <div class="feed-avatar" style="width:28px; height:28px; font-size:0.58rem;">{{ r['name'][0:2] | upper }}</div>
-                            <span style="font-weight:600; color:var(--text-primary); font-size:0.8rem;">{{ r['name'] }}</span>
-                        </div>
-                    </td>
-                    <td style="font-family:monospace; font-weight:600; color:var(--accent-cyan); font-size:0.76rem;">{{ r['employee_id'] }}</td>
-                    <td>
-                        <span style="padding:2px 8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:5px; font-size:0.68rem; font-weight:600; color:var(--text-secondary);">
-                            {{ r['department'] }}
-                        </span>
-                    </td>
-                    <td style="font-weight:600; color:var(--text-primary); font-size:0.8rem;">{{ r['date'] }}</td>
-                    <td style="font-family:monospace; font-size:0.8rem;">{{ r['time'] }}</td>
-                    <td style="font-size:0.7rem; color:var(--text-muted);">
-                        <i class="fa-solid fa-{% if r['method'] == 'Manual Entry' %}pen{% else %}camera{% endif %}" style="margin-right:3px;"></i>
-                        {{ r['method'] or 'Face AI' }}
-                    </td>
-                    <td>
-                        <span class="status-badge {% if r['status'] == 'Late' %}late{% elif r['status'] == 'Absent' %}absent{% elif r['status'] == 'Leave' %}leave{% else %}checked-in{% endif %}">
-                            {{ r['status'] }}
-                        </span>
-                    </td>
-                    <td>
-                        <button class="btn-sm" onclick="openEditModal('{{ r['id'] }}', '{{ r['time'] }}', '{{ r['date'] }}', '{{ r['status'] }}', '{{ r['name'] }}')">
-                            <i class="fa-solid fa-pen-to-square"></i> Edit
-                        </button>
-                    </td>
-                </tr>
+                    <tr>
+                        <td class="strong">{{ r['name'] }}</td>
+                        <td><code>{{ r['employee_id'] }}</code></td>
+                        <td>{{ r['department'] or '—' }}</td>
+                        <td>{{ r['date'] }}</td>
+                        <td>{{ r['time'][:5] }}</td>
+                        <td><span class="ui-badge {% if r['status'] == 'Present' %}good{% elif r['status'] == 'Late' %}late{% elif r['status'] == 'Absent' %}bad{% else %}muted{% endif %}">{{ r['status'] }}</span></td>
+                        <td><button type="button" class="ui-btn" style="padding:.3rem .7rem;"
+                                    data-id="{{ r['id'] }}" data-time="{{ r['time'] }}" data-date="{{ r['date'] }}"
+                                    data-status="{{ r['status'] }}" data-name="{{ r['name'] }}" onclick="openEditModal(this.dataset)">Edit</button></td>
+                    </tr>
                 {% else %}
-                <tr>
-                    <td colspan="8" style="text-align:center; padding:3rem; color:var(--text-muted);">
-                        <i class="fa-solid fa-calendar-xmark" style="font-size:1.5rem; margin-bottom:0.5rem; display:block; opacity:0.3;"></i>
-                        No records found matching your filters.
-                    </td>
-                </tr>
+                    <tr><td colspan="7" class="ui-empty">No records match these filters.</td></tr>
                 {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                </tbody>
+            </table>
+        </div>
 
-    <!-- Pagination -->
-    {% if total_pages > 1 %}
-    <div class="pagination">
-        {% if page > 1 %}
-        <a href="?page={{ page-1 }}&date_from={{ date_from }}&date_to={{ date_to }}&department={{ dept_filter }}&status={{ status_filter }}">
-            <i class="fa-solid fa-chevron-left"></i> Prev
-        </a>
-        {% else %}
-        <span class="disabled"><i class="fa-solid fa-chevron-left"></i> Prev</span>
-        {% endif %}
-
-        {% for p in range(1, total_pages + 1) %}
-            {% if p == page %}
-            <span class="active">{{ p }}</span>
-            {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
-            <a href="?page={{ p }}&date_from={{ date_from }}&date_to={{ date_to }}&department={{ dept_filter }}&status={{ status_filter }}">{{ p }}</a>
-            {% elif p == 4 or p == total_pages - 2 %}
-            <span style="color:var(--text-muted);">...</span>
-            {% endif %}
-        {% endfor %}
-
-        {% if page < total_pages %}
-        <a href="?page={{ page+1 }}&date_from={{ date_from }}&date_to={{ date_to }}&department={{ dept_filter }}&status={{ status_filter }}">
-            Next <i class="fa-solid fa-chevron-right"></i>
-        </a>
-        {% else %}
-        <span class="disabled">Next <i class="fa-solid fa-chevron-right"></i></span>
+        {% if total_pages > 1 %}
+        {% set qs = '&date_from=' ~ (date_from|urlencode) ~ '&date_to=' ~ (date_to|urlencode) ~ '&department=' ~ (dept_filter|urlencode) ~ '&status=' ~ (status_filter|urlencode) %}
+        <div class="ui-filters" style="padding:1rem 1.2rem; justify-content:center;">
+            {% if page > 1 %}<a class="ui-btn" href="?page={{ page - 1 }}{{ qs }}">Previous</a>{% endif %}
+            <span class="ui-hint">Page {{ page }} of {{ total_pages }}</span>
+            {% if page < total_pages %}<a class="ui-btn" href="?page={{ page + 1 }}{{ qs }}">Next</a>{% endif %}
+        </div>
         {% endif %}
     </div>
-    {% endif %}
 </div>
 
-<!-- Edit Modal -->
-<div id="editModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(10px); z-index:100; align-items:center; justify-content:center;">
-    <div class="glass-card" style="width:90%; max-width:400px;">
-        <div class="glass-card-header">
-            <span class="glass-card-title">Edit: <span id="editName" style="color:var(--accent-cyan);"></span></span>
-            <button onclick="closeEditModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.1rem;"><i class="fa-solid fa-xmark"></i></button>
+<dialog id="editModal" class="enrollment-dialog" aria-labelledby="editTitle">
+    <h2 id="editTitle">Edit: <span id="editName"></span></h2>
+    <form id="editForm" method="dialog" class="ui-filters" style="flex-direction:column; align-items:stretch; margin-top:1rem;">
+        <input type="hidden" id="editId">
+        <label>Date <input type="date" id="editDate" required></label>
+        <label>Time <input type="time" step="1" id="editTime" required></label>
+        <label>Status
+            <select id="editStatus">
+                <option>Present</option><option>Late</option><option>Absent</option><option>Leave</option>
+            </select>
+        </label>
+        <div style="display:flex; gap:.6rem; justify-content:flex-end;">
+            <button type="button" class="ui-btn" onclick="document.getElementById('editModal').close()">Cancel</button>
+            <button type="button" class="ui-btn primary" onclick="submitEdit()">Save</button>
         </div>
-        <div class="glass-card-body">
-            <form id="editForm" style="display:flex; flex-direction:column; gap:0.85rem;">
-                <input type="hidden" id="editId">
-                <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.35rem; font-weight:600;">Date</label>
-                    <input type="date" id="editDate" class="form-control" required style="width:100%;">
-                </div>
-                <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.35rem; font-weight:600;">Time</label>
-                    <input type="time" step="1" id="editTime" class="form-control" required style="width:100%;">
-                </div>
-                <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:0.35rem; font-weight:600;">Status</label>
-                    <select id="editStatus" class="form-control" style="width:100%; appearance:none;">
-                        <option value="Present" style="background:#0d1117;">Present</option>
-                        <option value="Late" style="background:#0d1117;">Late</option>
-                        <option value="Absent" style="background:#0d1117;">Absent</option>
-                        <option value="Leave" style="background:#0d1117;">Leave</option>
-                    </select>
-                </div>
-                <button type="button" class="btn-primary" onclick="submitEdit()">Save Changes</button>
-            </form>
-        </div>
-    </div>
-</div>
+    </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chartjs/dist/chart.umd.min.js') }}"></script>
 <script>
-function openEditModal(id, time, date, status, name) {
-    document.getElementById('editModal').style.display = 'flex';
-    document.getElementById('editId').value = id;
-    document.getElementById('editTime').value = time;
-    document.getElementById('editDate').value = date;
-    document.getElementById('editStatus').value = status;
-    document.getElementById('editName').innerText = name;
+new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ chart_labels | tojson }},
+        datasets: [
+            { label: 'On time', data: {{ chart_on_time | tojson }}, backgroundColor: '#10b981', stack: 's', borderRadius: 3 },
+            { label: 'Late', data: {{ chart_late | tojson }}, backgroundColor: '#f59e0b', stack: 's', borderRadius: 3 },
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { color: '#8b949e' } },
+            y: { stacked: true, beginAtZero: true, ticks: { color: '#8b949e', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+    }
+});
+
+const editModal = document.getElementById('editModal');
+function openEditModal(d) {
+    document.getElementById('editId').value = d.id;
+    document.getElementById('editTime').value = d.time;
+    document.getElementById('editDate').value = d.date;
+    document.getElementById('editStatus').value = d.status;
+    document.getElementById('editName').textContent = d.name;
+    editModal.showModal();
 }
-
-function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
-
 function submitEdit() {
     fetch('/api/edit_attendance', {
         method: 'POST',
@@ -197,9 +146,9 @@ function submitEdit() {
     })
     .then(r => r.json())
     .then(data => {
-        closeEditModal();
+        editModal.close();
         showToast(data.msg, data.success ? 'success' : 'error');
-        if (data.success) setTimeout(() => location.reload(), 1500);
+        if (data.success) setTimeout(() => location.reload(), 1200);
     })
     .catch(() => showToast('Network error: the change was not saved.', 'error'));
 }

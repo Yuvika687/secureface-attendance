@@ -18,60 +18,6 @@
         document.body.prepend(bg);
     }
 
-    /* ---------- custom cursor ---------- */
-    const CLICKABLE = 'a, button, [role="button"], label[for], .seg-toggle label, select, summary, .calendar-day:not(.empty), input[type=checkbox], input[type=radio], input[type=submit], input[type=file], .toggle-slider';
-    const TEXTY = 'input:not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=file]):not([type=range]), textarea, [contenteditable="true"]';
-
-    function mountCursor() {
-        if (!finePointer || reduced) return;
-        const ring = document.createElement("div");
-        ring.className = "fx-cursor";
-        ring.setAttribute("aria-hidden", "true");
-        ring.innerHTML = '<span class="ring"></span><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>';
-        const dot = document.createElement("div");
-        dot.className = "fx-cursor-dot";
-        dot.setAttribute("aria-hidden", "true");
-        document.body.append(ring, dot);
-        doc.classList.add("fx-cursor-on");
-
-        let mx = -100, my = -100, rx = -100, ry = -100, seen = false;
-        let hoverEl = null;
-        addEventListener("pointermove", e => {
-            if (e.pointerType !== "mouse") return;
-            mx = e.clientX; my = e.clientY;
-            if (!seen) { rx = mx; ry = my; seen = true; ring.classList.add("ready"); dot.classList.add("ready"); }
-            doc.style.setProperty("--fx-cx", mx + "px");
-            doc.style.setProperty("--fx-cy", my + "px");
-            doc.style.setProperty("--fx-gx", (mx / innerWidth * 100).toFixed(1) + "%");
-            doc.style.setProperty("--fx-gy", (my / innerHeight * 100).toFixed(1) + "%");
-        }, { passive: true });
-        addEventListener("pointerover", e => {
-            const t = e.target;
-            if (!(t instanceof Element)) return;
-            const text = t.closest(TEXTY);
-            hoverEl = text ? null : t.closest(CLICKABLE);
-            ring.classList.toggle("is-text", !!text);
-            ring.classList.toggle("is-hover", !!hoverEl);
-        });
-        addEventListener("pointerdown", () => ring.classList.add("is-down"));
-        addEventListener("pointerup", () => ring.classList.remove("is-down"));
-        document.addEventListener("mouseleave", () => { ring.classList.add("is-hidden"); dot.classList.add("is-hidden"); });
-        document.addEventListener("mouseenter", () => { ring.classList.remove("is-hidden"); dot.classList.remove("is-hidden"); });
-
-        (function loop() {
-            // ring eases toward pointer; over a button it snaps toward its centre a little
-            let tx = mx, ty = my;
-            if (hoverEl && hoverEl.isConnected) {
-                const r = hoverEl.getBoundingClientRect();
-                if (r.width < 260 && r.height < 90) { tx = lerp(mx, r.left + r.width / 2, .35); ty = lerp(my, r.top + r.height / 2, .35); }
-            }
-            rx = lerp(rx, tx, .2); ry = lerp(ry, ty, .2);
-            ring.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
-            dot.style.transform = `translate3d(${mx}px, ${my}px, 0)`;
-            requestAnimationFrame(loop);
-        })();
-    }
-
     /* ---------- spotlight on cards (sets --mx/--my) ---------- */
     const SPOT = ".glass-card, .stat-card, .table-panel, .settings-section, .r-card, .auth-card, .today-status-card, .card, .step, .feature-card, .surface";
     function mountSpotlight() {
@@ -530,7 +476,6 @@
 
     function init() {
         mountBackground();
-        mountCursor();
         mountSpotlight();
         mountMagnetic();
         mountTilt();

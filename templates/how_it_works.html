@@ -51,14 +51,14 @@
 
     <h2>The scan, step by step</h2>
     <div class="flow">
-        <div class="step"><i class="fa-solid fa-video"></i><b>Camera frame</b><span>The approved scanner device sends one webcam frame at a time.</span></div>
+        <div class="step"><i class="fa-solid fa-video"></i><b>Camera frame</b><span>The scanner sends one full webcam frame at a time.</span></div>
         <div class="step"><i class="fa-solid fa-expand"></i><b>Find the face</b><span>BlazeFace finds faces. No face or more than one face: stop and ask again.</span></div>
         <div class="step"><i class="fa-solid fa-link"></i><b>Same face?</b><span>The face box must overlap the previous frame's box (IoU). A jump means a new person, so start over.</span></div>
         <div class="step"><i class="fa-solid fa-crop-simple"></i><b>Crop</b><span>Face plus a 25% margin, resized to 224×224, exactly as in training.</span></div>
         <div class="step"><i class="fa-solid fa-brain"></i><b>Liveness check</b><span>The trained model scores how likely the face is a spoof, averaged over the last 5 frames.</span></div>
         <div class="step stop"><i class="fa-solid fa-hand"></i><b>Only real faces continue</b><span>SPOOF or UNCERTAIN stops here. Recognition never runs on them.</span></div>
         <div class="step"><i class="fa-solid fa-id-card"></i><b>Who is it?</b><span>Face Mesh aligns the face; ArcFace compares it with registered students.</span></div>
-        <div class="step"><i class="fa-regular fa-eye"></i><b>Natural blink</b><span>The scanner waits silently for one normal blink.</span></div>
+        <div class="step"><i class="fa-regular fa-eye"></i><b>Natural blink</b><span>You blink once; the server checks the eyes close and open.</span></div>
         <div class="step"><i class="fa-solid fa-circle-check"></i><b>Attendance</b><span>Shows name + student ID with "Attendance marked" or "Already marked today".</span></div>
     </div>
     <div class="outcomes">
