@@ -35,7 +35,7 @@
             </div>
             <div class="pv-actions">
                 <button type="button" class="btn-primary" id="pvToggle"><i class="fa-solid fa-play"></i> Start</button>
-                <button type="button" class="btn-sm" id="pvExplain" disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Explain (Grad-CAM)</button>
+                <button type="button" class="btn-sm" id="pvExplain" disabled title="Press Start and show a face first"><i class="fa-solid fa-wand-magic-sparkles"></i> Explain (Grad-CAM)</button>
             </div>
             <div class="pv-status" id="pvStatus">Press Start to turn on the camera.</div>
         </div>
@@ -175,7 +175,7 @@
         if (running) {
             running = false; stopCamera();
             toggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start';
-            statusEl.textContent = 'Stopped.';
+            statusEl.textContent = 'Stopped. Press Start to use Explain (it needs the live camera).';
             explainBtn.disabled = true;
             return;
         }

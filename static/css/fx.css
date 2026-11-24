@@ -351,6 +351,7 @@ a.sidebar-logo:hover .logo-sub span { transform: translateX(3px); }
 .btn-primary:hover::after { transform: translateX(120%); }
 .btn-primary:active { transform: scale(.97) !important; }
 .btn-primary:disabled { filter: saturate(.5) brightness(.85); }
+.btn-sm:disabled { opacity: .4 !important; cursor: not-allowed !important; transform: none !important; }
 .btn-primary i { transition: transform .4s var(--fx-spring); }
 .btn-primary:hover i.fa-arrow-right { transform: translateX(4px); }
 
