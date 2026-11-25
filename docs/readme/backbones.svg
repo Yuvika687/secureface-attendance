@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="460" viewBox="0 0 1280 460" role="img" aria-labelledby="t d">
+<title id="t">Backbone comparison</title><desc id="d">MobileNetV3-Small 98.69% accuracy, 1.0M params, 4.0 MB, 2.8 ms ONNX CPU; ResNet18 98.90%, 11.2M, 43.0 MB, 17.3 ms; EfficientNet-B0 99.26%, 4.2M, 16.2 MB, 7.7 ms.</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#060a15"/><stop offset="1" stop-color="#0b1224"/></linearGradient>
+<radialGradient id="g1" cx="0.08" cy="0" r="0.6"><stop offset="0" stop-color="#5eead4" stop-opacity="0.20"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/></radialGradient>
+<radialGradient id="g2" cx="1" cy="1" r="0.6"><stop offset="0" stop-color="#c4b5fd" stop-opacity="0.18"/><stop offset="1" stop-color="#c4b5fd" stop-opacity="0"/></radialGradient>
+<linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#c4b5fd"/></linearGradient>
+<pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#1e293b" stroke-opacity="0.35"/></pattern>
+<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<clipPath id="clip"><rect width="1280" height="460" rx="22"/></clipPath>
+</defs>
+<g clip-path="url(#clip)">
+<rect width="1280" height="460" fill="url(#bg)"/><rect width="1280" height="460" fill="url(#grid)"/>
+<rect width="1280" height="460" fill="url(#g1)"/><rect width="1280" height="460" fill="url(#g2)"/>
+<rect x="0" y="0" width="1280" height="2" fill="url(#acc)" opacity="0.8"><animate attributeName="opacity" values="0.35;0.9;0.35" dur="4s" repeatCount="indefinite"/></rect>
+<text x="48" y="58" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" letter-spacing="3" fill="#5eead4">TRADE-OFFS</text><text x="46" y="98" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" fill="#f8fafc" letter-spacing="-0.5">Why MobileNetV3-Small</text><text x="48" y="126" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16" fill="#94a3b8">Same test set and protocol for all three. Shorter bars are better.</text>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.250;1" dur="0.80s" begin="0s" fill="freeze"/><rect x="48.0" y="150" width="384.0" height="250" rx="18" fill="#0f172a" stroke="#5eead4" stroke-width="2"/>
+<rect x="48.0" y="150" width="384.0" height="250" rx="18" fill="none" stroke="#5eead4" stroke-width="2" filter="url(#glow)" opacity="0.5"><animate attributeName="opacity" values="0.15;0.7;0.15" dur="3s" repeatCount="indefinite"/></rect>
+<rect x="314.0" y="168" width="100" height="24" rx="12" fill="#5eead4" fill-opacity="0.15" stroke="#5eead4" stroke-opacity="0.6"/><text x="364.0" y="185" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" font-weight="800" fill="#5eead4" text-anchor="middle" >DEPLOYED</text>
+<text x="70.0" y="188" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="20" font-weight="800" fill="#f8fafc" text-anchor="start" >MobileNetV3-Small</text>
+<text x="70.0" y="214" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#cbd5e1" text-anchor="start" >Accuracy 98.69%  ·  HTER 1.31%</text>
+<text x="70.0" y="250" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >Parameters</text>
+<text x="410.0" y="250" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#f8fafc" text-anchor="end" >1.0 M</text>
+<rect x="70.0" y="260" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="70.0" y="260" width="30.4" height="10" rx="5.0" fill="url(#acc)" opacity="1"><animate attributeName="width" values="0;0;30.4" keyTimes="0;0.353;1" begin="0s" dur="1.70s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="70.0" y="298" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >File size</text>
+<text x="410.0" y="298" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#f8fafc" text-anchor="end" >4.0 MB</text>
+<rect x="70.0" y="308" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="70.0" y="308" width="31.6" height="10" rx="5.0" fill="url(#acc)" opacity="1"><animate attributeName="width" values="0;0;31.6" keyTimes="0;0.405;1" begin="0s" dur="1.85s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="70.0" y="346" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >ONNX CPU latency</text>
+<text x="410.0" y="346" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#f8fafc" text-anchor="end" >2.8 ms</text>
+<rect x="70.0" y="356" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="70.0" y="356" width="55.0" height="10" rx="5.0" fill="url(#acc)" opacity="1"><animate attributeName="width" values="0;0;55.0" keyTimes="0;0.450;1" begin="0s" dur="2.00s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+</g>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.400;1" dur="1.00s" begin="0s" fill="freeze"/><rect x="448.0" y="150" width="384.0" height="250" rx="18" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+<text x="470.0" y="188" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="20" font-weight="800" fill="#f8fafc" text-anchor="start" >ResNet18</text>
+<text x="470.0" y="214" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#cbd5e1" text-anchor="start" >Accuracy 98.90%  ·  HTER 1.10%</text>
+<text x="470.0" y="250" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >Parameters</text>
+<text x="810.0" y="250" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >11.2 M</text>
+<rect x="470.0" y="260" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="470.0" y="260" width="340.0" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;340.0" keyTimes="0;0.421;1" begin="0s" dur="1.90s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="470.0" y="298" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >File size</text>
+<text x="810.0" y="298" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >43.0 MB</text>
+<rect x="470.0" y="308" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="470.0" y="308" width="340.0" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;340.0" keyTimes="0;0.463;1" begin="0s" dur="2.05s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="470.0" y="346" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >ONNX CPU latency</text>
+<text x="810.0" y="346" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >17.3 ms</text>
+<rect x="470.0" y="356" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="470.0" y="356" width="340.0" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;340.0" keyTimes="0;0.500;1" begin="0s" dur="2.20s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+</g>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.500;1" dur="1.20s" begin="0s" fill="freeze"/><rect x="848.0" y="150" width="384.0" height="250" rx="18" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+<text x="870.0" y="188" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="20" font-weight="800" fill="#f8fafc" text-anchor="start" >EfficientNet-B0</text>
+<text x="870.0" y="214" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#cbd5e1" text-anchor="start" >Accuracy 99.26%  ·  HTER 0.74%</text>
+<text x="870.0" y="250" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >Parameters</text>
+<text x="1210.0" y="250" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >4.2 M</text>
+<rect x="870.0" y="260" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="870.0" y="260" width="127.5" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;127.5" keyTimes="0;0.476;1" begin="0s" dur="2.10s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="870.0" y="298" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >File size</text>
+<text x="1210.0" y="298" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >16.2 MB</text>
+<rect x="870.0" y="308" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="870.0" y="308" width="128.1" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;128.1" keyTimes="0;0.511;1" begin="0s" dur="2.25s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<text x="870.0" y="346" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#94a3b8" text-anchor="start" >ONNX CPU latency</text>
+<text x="1210.0" y="346" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" font-weight="800" fill="#cbd5e1" text-anchor="end" >7.7 ms</text>
+<rect x="870.0" y="356" width="340.0" height="10" rx="5" fill="#1e293b"/>
+<rect x="870.0" y="356" width="151.3" height="10" rx="5.0" fill="#475569" opacity="1"><animate attributeName="width" values="0;0;151.3" keyTimes="0;0.542;1" begin="0s" dur="2.40s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+</g>
+<text x="48" y="438" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#94a3b8" text-anchor="start" >Bigger backbones are a little more accurate; MobileNetV3-Small is 11× smaller than ResNet18 and fastest on ONNX CPU — it runs on every frame.</text>
+</g>
+<rect x="0.5" y="0.5" width="1279" height="459" rx="22" fill="none" stroke="#1e293b"/>
+</svg>
