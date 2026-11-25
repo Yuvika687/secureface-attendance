@@ -25,7 +25,7 @@ SecureFace puts a <b>liveness model I trained myself</b> in front of recognition
 
 <br>
 
-<img src="docs/readme/pipeline.svg" width="100%" alt="Animated scan pipeline: camera, BlazeFace, same-face IoU tracking, crop, MobileNetV3 liveness with a 5-frame average, ArcFace recognition, server-verified blink, attendance. Spoofed or uncertain faces stop at the liveness step.">
+<img src="docs/readme/pipeline.svg" width="100%" alt="Animated scan pipeline: camera, BlazeFace, same-face IoU tracking, crop, MobileNetV3 liveness with a 5-frame average, ArcFace recognition, server-verified random head-turn + blink challenge, attendance. Spoofed or uncertain faces stop at the liveness step.">
 
 <details>
 <summary><b>The pipeline, step by step</b></summary>
@@ -37,15 +37,17 @@ SecureFace puts a <b>liveness model I trained myself</b> in front of recognition
 4. **Liveness:** MobileNetV3-Small gives P(spoof), averaged over the last 5 frames, then a calibrated three-way decision:
    **LIVE**, **SPOOF** or **UNCERTAIN**. Only LIVE continues.
 5. **Recognise:** Face Mesh alignment and an ArcFace (`w600k_r50`) 512-D embedding, matched by cosine similarity.
-6. **Blink:** a silent, natural blink (open → closed → open, same person, within 8 s), checked on the server; the
-   browser's own flag is ignored.
+6. **Random challenge (second check):** the scanner shows one random instruction, "Turn your head left" or
+   "Turn your head right", then asks for one natural blink. The server checks both from its own Face Mesh
+   readings (head yaw, then eyes open → closed → open), for the same face, within 15 s. A wrong-way turn or a
+   timeout starts a new random challenge. Nothing the browser sends is trusted.
 7. **Attendance:** Present or Late (admin cut-off), once per day. Every stage is logged with its scores.
 
 | Model | Trained here? | Job |
 |---|:---:|---|
 | **MobileNetV3-Small liveness classifier** | ✅ [`training/`](training/) | Real face or spoof |
 | BlazeFace short-range (MediaPipe) | — | Face detection |
-| MediaPipe Face Landmarker, 478 points | — | Alignment and eye openness for the blink |
+| MediaPipe Face Landmarker, 478 points | — | Alignment, head turn and eye openness for the challenge |
 | ArcFace `w600k_r50` (InsightFace, ONNX) | — | 512-D identity embedding |
 </details>
 
@@ -92,7 +94,7 @@ cp .env.example .env                       # set SECRET_KEY and FACE_ENCRYPTION_
 The first start downloads the pretrained vision models. Then:
 
 1. 🧑‍🎓 Students create accounts and choose **Register face** on their dashboard (5 samples, one face in view).
-2. 📷 Open the scanner (`/`) on the attendance laptop, look at the camera and blink once.
+2. 📷 Open the scanner (`/`) on the attendance laptop, look at the camera, turn your head the way it asks, then blink once.
 3. 🔐 Optional: Settings → Scanner → **Require approved scanner device**, then **Set this device as scanner** on each kiosk.
 
 <details>
@@ -115,7 +117,7 @@ tunnel terminal stops public access.
 ```
 
 The tests cover the crop-identity regression, login and roles, students blocked from admin pages, CSRF, scanner
-device approval, attendance marking and "Already marked today", the server-side blink, the wipe confirmation,
+device approval, attendance marking and "Already marked today", the server-side head-turn + blink challenge, the wipe confirmation,
 registration owner checks and Test Mode never marking attendance. Each test uses a temporary database.
 
 ```bash
@@ -154,7 +156,11 @@ with the private `.face_key`; keep the database, keys, uploads and the virtual e
 > UNCERTAIN band, and a phone photo was once judged LIVE. A data-collection tool is built in (Test Mode → Collection
 > mode) and the plan is in [`docs/domain_adaptation_plan.md`](docs/domain_adaptation_plan.md).
 
-- The blink check does not stop a video replay (a video blinks too); the liveness model is the main defence.
+- **Two checks against spoofing.** The liveness model is the first check. On this project's webcam it was fooled by
+  phone photos (Test Mode, 2026-11-24), so the random head-turn + blink challenge is the second check: a flat photo
+  can't turn its head (tilting a photo moves the measured yaw by at most 0.025, the turn needs 0.12) and can't
+  blink, and a replayed video only passes if it happens to turn the randomly asked way and then blink in time.
+  A live person puppeting a high-quality 3D mask, or a real-time deepfake that follows instructions, is not covered.
 - This local edition uses SQLite on the host laptop.
 
 📄 Full engineering notes: [`docs/HANDOVER.md`](docs/HANDOVER.md) · Report: [`SecureFace_Attendance_Report.pdf`](SecureFace_Attendance_Report.pdf)

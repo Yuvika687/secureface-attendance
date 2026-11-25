@@ -15,7 +15,7 @@ A face-recognition attendance system for students with a **self-trained liveness
 
 1. Checks the face is a real, live person, not a photo, phone or screen (trained MobileNetV3-Small).
 2. Recognizes who it is (ArcFace).
-3. Waits for one natural blink.
+3. Asks for a random head turn (left or right), then one natural blink (the second check).
 4. Marks them Present or Late, once per day.
 
 Merged from two of the owner's own projects; both originals must never be modified:
@@ -32,7 +32,7 @@ Merged from two of the owner's own projects; both originals must never be modifi
 
 | Part | Access | Contents |
 |---|---|---|
-| Common scanner `/` | No login; **approved scanner device only** | Face → liveness → recognition → silent blink → attendance. Success shows name, student ID and "Attendance marked" / "Already marked today". |
+| Common scanner `/` | No login; **approved scanner device only** | Face → liveness → recognition → random head turn + blink → attendance. Success shows name, student ID and "Attendance marked" / "Already marked today". |
 | Student pages | Student login | `/register` (create account), `/employee` (dashboard: own attendance, face registration popup, "Present: X, of which Late: Y"), `/profile` |
 | Admin pages | Admin login | Dashboard, Students (Reset face), Attendance, Analytics, Settings (incl. Scanner Devices), Pipeline View, Test Mode, Spoof Log, Scan Log, Results |
 
@@ -96,18 +96,20 @@ copies of the real DB. The real `database/smartface.db` gets these on its next s
 5. **MobileNetV3-Small** → raw P(spoof) per frame; 5-frame average per Flask session.
 6. **Three-way decision** (`classify_three_way`): band `[0.024217…, 0.975782…]` from
    `liveness/weights/gray_zone_v2.json` → UNCERTAIN; otherwise SPOOF if ≥ `liveness_threshold`
-   (setting, default 0.5), else LIVE. Only SPOOF clears an in-progress blink attempt.
+   (setting, default 0.5), else LIVE. Only SPOOF clears an in-progress challenge.
 7. **Face Mesh + ArcFace** (`utils/face_utils.py`), only on LIVE. Cosine match with
    `face_tolerance` (default 0.45).
 8. If a **student is logged in** in this browser, only their own face may proceed; another
    registered face → "This face doesn't match this account". (Kept from Task 1; attendance
    normally happens on the logged-out common scanner.)
-9. **Silent blink, verified by the server** (`_advance_blink`, per session): the server's own
-   Face Mesh `eyes_closed` reading (EAR below the existing 0.21 cut-off) must go open → closed →
-   open for the same matched user within 8 s (`CHALLENGE_TIMEOUT_SECONDS`). A closed-eye frame
-   that fails recognition still counts for the same tracked face; only a recognized open frame
-   completes it. Any `liveness_verified` flag from the browser is ignored (tested in
-   `tests/test_server_blink.py`).
+9. **Random challenge, verified by the server** (`_new_challenge`, `_advance_challenge`, per session):
+   one random instruction ("Turn your head left/right", `_pick_turn()` uses `secrets`), then
+   "Now blink once". From the server's own Face Mesh metrics: `head_yaw` straight (|yaw| < 0.08),
+   then turned past 0.12 the asked way (positive yaw = the person's own left; checked on real
+   photos), then eyes open -> closed -> open (`_advance_blink`), same user, within
+   `CHALLENGE_TIMEOUT_SECONDS` (15 s). A wrong-way turn or a timeout starts a new random challenge.
+   Unrecognized frames of the same tracked face may progress it but not finish it. Browser fields
+   are ignored (`tests/test_server_blink.py`).
 10. **Attendance:** Present/Late by the cut-off setting, once per user per day.
 
 Messages: "Attendance marked", "Already marked today", "Face not recognized — if you're
@@ -225,8 +227,11 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
   were deleted.
 - **Recognition only after LIVE.** SPOOF/UNCERTAIN never reach Face Mesh/ArcFace.
 - **UNCERTAIN doesn't clear a blink attempt; SPOOF does.** Fixes a real bug found in live testing.
-- **Silent blink** instead of a random visible challenge. Deliberate tradeoff: a replayed
-  video would blink too. The liveness model is the primary defense.
+- **Random head-turn + blink challenge** (2026-11-25) replaced the silent blink, because on the
+  laptop webcam the liveness model judged phone photos LIVE (Test Mode, 2026-11-24: 61 of 75
+  frames). The model stays the first check; the challenge is the second. A tilted flat photo moves
+  the yaw by at most 0.025 (test), so it can't pass the 0.12 turn; a replayed video passes only if
+  it turns the randomly asked way first and then blinks in time.
 - **Attendance only at the common scanner.** Scan Face links were removed from student pages
   (Task 3). Scanner-device approval (Task 4) is now an optional setting, off by default.
 - **IoU tracking replaces the center-distance rule** (threshold 0.25, reasoning in Section 3).
@@ -262,7 +267,7 @@ From `training/results/summary.json` (CelebA-Spoof test set, n = 3900, deployed 
 - Phase 2: UI (single login, colors, scanner box label, meters removed, Reset face, Scan
   Log columns, Spoof Log, Results, Test Mode, How It Works).
 - Phase 3: collection mode + `docs/domain_adaptation_plan.md`.
-- Phase 4: 59 tests (now 73 with the server-side blink, scanner-setting, log and CSV tests).
+- Phase 4: 59 tests (now 78 with the server-side challenge, scanner-setting, log and CSV tests).
 - Final cleanup (2026-11-24): simpler UI everywhere, square face camera view (display only),
   optional scanner approval, Analytics merged into Attendance, Scan Log as a Spoof Log tab,
   v3 band removed (back to v2).

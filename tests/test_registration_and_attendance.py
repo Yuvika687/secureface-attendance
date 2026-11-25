@@ -4,7 +4,7 @@ models (BlazeFace, liveness model, Face Mesh, ArcFace)."""
 
 import pytest
 
-from tests.helpers import csrf_token, login, sample_image
+from tests.helpers import csrf_token, login, sample_image, challenge_steps
 
 OWNER_MSG = "Only the account owner should be in front of the camera."
 FACE_A = "test_10059_001096.png"          # CelebA-Spoof subject 10059 (live)
@@ -67,16 +67,17 @@ def scan_until_done(scanner, image_name, tries=8):
 
 
 def blink_scan(scanner, image_name, eye_script):
-    """Three frames of the same face with the server seeing open -> closed -> open."""
-    eye_script.extend([("open", True), ("closed", True), ("open", True)])
+    """Five frames of the same face completing the random challenge (turn left, then blink)."""
+    steps = challenge_steps("left")
+    eye_script.extend(steps)
     res = None
-    for _ in range(3):
+    for _ in range(len(steps)):
         res = scanner.post("/api/recognize_face", json={"image": sample_image(image_name)},
                            headers={"X-CSRFToken": scanner.csrf}).get_json()
     return res
 
 
-def test_attendance_marked_then_already_marked(flask_app, make_user, scanner_client, db, eye_script):
+def test_attendance_marked_then_already_marked(flask_app, make_user, scanner_client, db, eye_script, force_turn):
     a = student_client(flask_app, make_user)
     register_fully(a, FACE_A)
 

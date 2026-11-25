@@ -277,7 +277,19 @@ MASK_STREAK_FRAMES = 3
 SCANNER_COOKIE_NAME = "scanner_device"
 SCANNER_COOKIE_MAX_AGE = 5 * 365 * 24 * 3600   # stays approved until an admin revokes it
 
-CHALLENGE_TIMEOUT_SECONDS = 8    # max wait for one natural blink before silently restarting the attempt
+# Random active challenge (second check after the liveness model): after LIVE +
+# recognized, the server asks for one random head turn, then one natural blink, all by
+# the same tracked face within CHALLENGE_TIMEOUT_SECONDS. Everything is measured by the
+# server from Face Mesh (utils/face_utils.compute_liveness_metrics); nothing the browser
+# sends is trusted. A flat photo can't produce a real yaw change and can't blink.
+CHALLENGE_TIMEOUT_SECONDS = 15   # turn + blink must both finish inside this window
+# head_yaw = (nose x - eye-centre x) / eye distance, on the unmirrored camera frame.
+# Positive = the person turned to THEIR left (checked on real photos, 2026-11-25).
+# 0.08 / 0.12 are the values the original SmartFace turn challenge used.
+HEAD_STRAIGHT_MAX_YAW = 0.08     # |yaw| below this = looking straight
+HEAD_TURN_MIN_YAW = 0.12         # |yaw| above this (after straight) = turned
+TURN_INSTRUCTIONS = {"left": "Turn your head left", "right": "Turn your head right"}
+BLINK_INSTRUCTION = "Now blink once"
 
 
 def _get_liveness_session_id():
@@ -315,11 +327,63 @@ def _reset_liveness_session(keep_log_dedup=False):
 
 
 def _clear_blink_attempt():
-    """Ends any in-progress blink attempt for this browser session."""
+    """Ends any in-progress challenge (head turn + blink) for this browser session."""
     session.pop('challenge_type', None)
     session.pop('challenge_user', None)
     session.pop('challenge_assigned_at', None)
+    session.pop('challenge_turn', None)
+    session.pop('turn_stage', None)
     session.pop('blink_stage', None)
+
+
+def _pick_turn():
+    """Random head-turn direction for a new challenge (unpredictable to the client)."""
+    return secrets.choice(("left", "right"))
+
+
+def _new_challenge(user_id):
+    """Starts a fresh random challenge for this recognized user."""
+    _clear_blink_attempt()
+    session['challenge_type'] = 'turn_then_blink'
+    session['challenge_turn'] = _pick_turn()
+    session['challenge_user'] = user_id
+    session['challenge_assigned_at'] = time.time()
+    session['turn_stage'] = 'start'
+
+
+def _challenge_instruction():
+    if session.get('turn_stage') == 'turned':
+        return BLINK_INSTRUCTION
+    return TURN_INSTRUCTIONS.get(session.get('challenge_turn'), "")
+
+
+def _advance_challenge(liveness_metrics, allow_complete=True):
+    """Server-side random challenge, from this frame's Face Mesh metrics:
+
+        turn:  start --straight--> straight --turned the asked way--> turned
+        blink: (only after the turn) open -> closed -> open   (_advance_blink)
+
+    Returns 'turn', 'blink', 'done', or 'wrong' (turned the other way: the
+    caller starts a new random challenge). With allow_complete=False (an
+    unrecognized frame of the same tracked face) progress is allowed but the
+    challenge can't finish."""
+    if not liveness_metrics or not liveness_metrics.get("face_mesh_detected"):
+        return 'done' if session.get('blink_stage') == 'done' else (
+            'blink' if session.get('turn_stage') == 'turned' else 'turn')
+    stage = session.get('turn_stage', 'start')
+    if stage != 'turned':
+        yaw = float(liveness_metrics.get("head_yaw") or 0.0)
+        wanted = 1 if session.get('challenge_turn') == 'left' else -1
+        if stage == 'start' and abs(yaw) < HEAD_STRAIGHT_MAX_YAW:
+            stage = 'straight'
+        elif stage == 'straight':
+            if yaw * wanted > HEAD_TURN_MIN_YAW:
+                stage = 'turned'
+            elif yaw * wanted < -HEAD_TURN_MIN_YAW:
+                return 'wrong'
+        session['turn_stage'] = stage
+        return 'turn' if stage != 'turned' else 'blink'
+    return 'done' if _advance_blink(liveness_metrics, allow_complete) else 'blink'
 
 
 def _advance_blink(liveness_metrics, allow_complete=True):
@@ -2035,42 +2099,40 @@ def api_recognize_face():
                     "msg": MSG_ACCOUNT_MISMATCH,
                 })
 
-            # Silent natural-blink check (no visible instruction -- see the
-            # commit message / chat for the honest replay-attack tradeoff
-            # this involves vs. the previous random blink/turn_left/
-            # turn_right challenge). CHALLENGE_TIMEOUT_SECONDS bounds how
-            # long we wait for one natural blink before silently restarting
-            # the attempt clock, so a subject who isn't blinking (dry eyes,
-            # staring) doesn't get stuck forever.
-            # The open -> closed -> open sequence must happen for this same
-            # user within CHALLENGE_TIMEOUT_SECONDS of the attempt starting;
-            # a different matched user or a timeout starts a fresh attempt.
-            if 'challenge_type' not in session or session.get('challenge_user') != user_id:
-                _clear_blink_attempt()
-                session['challenge_type'] = 'blink'
-                session['challenge_user'] = user_id
-                session['challenge_assigned_at'] = time.time()
-            elif time.time() - session.get('challenge_assigned_at', 0) > CHALLENGE_TIMEOUT_SECONDS:
-                session['challenge_assigned_at'] = time.time()
-                session.pop('blink_stage', None)
+            # Random active challenge, decided only by the server (see
+            # CHALLENGE_TIMEOUT_SECONDS above): one random head turn, then one
+            # natural blink, by this same user within the time limit. A different
+            # matched user, a timeout or a turn the wrong way starts a NEW random
+            # challenge, so a pre-recorded video can't just be replayed.
+            if 'challenge_type' not in session or session.get('challenge_user') != user_id \
+                    or time.time() - session.get('challenge_assigned_at', 0) > CHALLENGE_TIMEOUT_SECONDS:
+                _new_challenge(user_id)
 
-            challenge_passed = _advance_blink(liveness_metrics)
+            progress = _advance_challenge(liveness_metrics)
+            if progress == 'wrong':
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"turned the wrong way (asked {session.get('challenge_turn')}); new challenge",
+                                dedup=False, test_label=test_label, **frame_scores)
+                _new_challenge(user_id)
+                progress = 'turn'
 
-            if not challenge_passed:
-                _log_scan_event("RECOGNIZED", user_id=user_id, detail="awaiting silent blink", test_label=test_label, **frame_scores)
+            if progress != 'done':
+                step = f"turn_{session.get('challenge_turn')}" if progress == 'turn' else 'blink'
+                _log_scan_event("RECOGNIZED", user_id=user_id, detail=f"challenge: {step}", test_label=test_label, **frame_scores)
                 return jsonify({
                     "success": False, "recognized": True, "state": "LIVE",
                     "liveness_metrics": liveness_metrics,
                     "p_spoof": round(smoothed_prob_spoof, 4),
                     "confidence": confidence, "timings": timings, "face_box": face_box,
-                    "challenge": "blink",
-                    "msg": "Scanning...",
+                    "challenge": step, "challenge_pending": True,
+                    "instruction": _challenge_instruction(),
+                    "msg": _challenge_instruction(),
                     "user": user_info['name'],
                     "emp_id": user_info['employee_id'],
                     "department": user_info['department'],
                 })
+            challenge_done = f"turn_{session.get('challenge_turn')}+blink"
 
-            # Blink verified by the server. Clear the attempt.
+            # Turn + blink verified by the server. Clear the attempt.
             _clear_blink_attempt()
 
             now = datetime.now()
@@ -2089,7 +2151,7 @@ def api_recognize_face():
                              (user_id, date_str, time_str, status, 'Face Recognition'))
                 conn.commit()
                 conn.close()
-                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge_done}",
                                  dedup=False, update_dedup_key=False, test_label=test_label, **frame_scores)
                 _log_scan_event("ATTENDANCE_MARKED", user_id=user_id, detail=f"status={status} time={time_str}",
                                  dedup=False, test_label=test_label, **frame_scores)
@@ -2105,7 +2167,7 @@ def api_recognize_face():
                 })
             else:
                 conn.close()
-                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail="challenge=blink",
+                _log_scan_event("CHALLENGE_PASSED", user_id=user_id, detail=f"challenge={challenge_done}",
                                  dedup=False, update_dedup_key=False, test_label=test_label, **frame_scores)
                 _log_scan_event("ALREADY_MARKED", user_id=user_id, detail="already checked in today",
                                  dedup=False, test_label=test_label, **frame_scores)
@@ -2127,16 +2189,20 @@ def api_recognize_face():
         # face jump / no-face / multi-face would have reset the session) and
         # still inside its window, a closed-eye frame may still count: closed
         # eyes can make recognition fail for that one frame.
-        if session.get('challenge_type') == 'blink':
-            if time.time() - session.get('challenge_assigned_at', 0) <= CHALLENGE_TIMEOUT_SECONDS:
-                _advance_blink(liveness_metrics, allow_complete=False)
+        # (A turned head or closed eyes can make recognition miss one frame of the
+        # same tracked face; the challenge may progress but can't finish here.)
+        if session.get('challenge_type'):
+            if time.time() - session.get('challenge_assigned_at', 0) <= CHALLENGE_TIMEOUT_SECONDS \
+                    and _advance_challenge(liveness_metrics, allow_complete=False) != 'wrong':
+                pass
             else:
                 _clear_blink_attempt()
         _log_scan_event("UNRECOGNIZED", test_label=test_label, **frame_scores)
         return jsonify({
             "success": False, "recognized": False, "state": "LIVE",
             "face_found": True, "liveness_metrics": liveness_metrics,
-            "blink_pending": session.get("challenge_type") == "blink",
+            "challenge_pending": bool(session.get("challenge_type")),
+            "instruction": _challenge_instruction() if session.get("challenge_type") else None,
             "p_spoof": round(smoothed_prob_spoof, 4),
             "confidence": confidence, "timings": timings, "face_box": face_box,
             "msg": MSG_FACE_NOT_RECOGNIZED,

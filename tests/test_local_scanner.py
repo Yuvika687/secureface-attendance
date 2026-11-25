@@ -15,14 +15,16 @@ def test_mask_cancels_blink_and_repeated_checkin_keeps_one_row(scanner_client, d
     student = make_user("employee")
     face = Detection(0, 0, 64, 64, 1.0)
     monkeypatch.setattr(app._liveness_detector, "detect", lambda frame: [face])
-    scores = iter([1.0] + [0.0] * (14 + app.MASK_STREAK_FRAMES - 1))
+    scores = iter([1.0] + [0.0] * (18 + app.MASK_STREAK_FRAMES - 1))
     monkeypatch.setattr(app._liveness_predictor, "predict_prob", lambda crop: next(scores))
     masked = False
     monkeypatch.setattr(app, "mask_probability", lambda crop: 0.99 if masked else 0.6)
     closed = False
+    yaw = 0.0
+    monkeypatch.setattr(app, "_pick_turn", lambda: "left")
 
     def recognize(frame, match_threshold):
-        return student["id"], {"face_mesh_detected": True, "eyes_closed": closed}, 99, False
+        return student["id"], {"face_mesh_detected": True, "eyes_closed": closed, "head_yaw": yaw}, 99, False
 
     monkeypatch.setattr(app, "recognize_face_with_liveness", recognize)
     _, jpeg = cv2.imencode(".jpg", np.zeros((64, 64, 3), dtype=np.uint8))
@@ -46,6 +48,10 @@ def test_mask_cancels_blink_and_repeated_checkin_keeps_one_row(scanner_client, d
     assert scan()["state"] == "MASK"
     masked = False
     for expected in ("Attendance marked", "Already marked today"):
+        yaw = 0.0
+        assert not scan()["success"]             # new random challenge: looking straight
+        yaw = 0.2
+        assert not scan()["success"]             # turned left as asked
         for closed in (False, True):
             assert not scan()["success"]
         closed = False

@@ -110,13 +110,15 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
     P("1. What the system does", "h1")
     P("SecureFace Attendance marks student attendance with a webcam. Before it checks <i>who</i> a person is, "
       "it checks that a real, live person is in front of the camera and not a printed photo, a phone or a screen. "
-      "That check is done by a liveness model trained for this project. Recognition only runs on faces the model "
-      "judges LIVE.")
+      "There are two checks. The first is a liveness model trained for this project; recognition only runs on faces "
+      "the model judges LIVE. The second is a random challenge after recognition: the person must turn their head the "
+      "way the scanner asks (left or right, chosen at random) and then blink, which a photo cannot do and a replayed "
+      "video is unlikely to match.")
     P("The system has three parts:")
     story.append(table([
         ["Part", "Who uses it", "What it does"],
-        ["Common scanner", "Anyone, on an admin-approved device only",
-         "Camera -> liveness -> recognition -> natural blink -> attendance. Shows name, student ID and "
+        ["Common scanner", "Anyone (optionally only admin-approved devices)",
+         "Camera -> liveness -> recognition -> random head turn + blink -> attendance. Shows name, student ID and "
          "\"Attendance marked\" or \"Already marked today\"."],
         ["Student pages", "Logged-in students", "Create an account, register their face once, view their own attendance."],
         ["Admin pages", "Logged-in admins",
@@ -128,14 +130,14 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
     P("2. The scan pipeline", "h1")
     P("One request per camera frame to <font face='Courier'>/api/recognize_face</font>. Each stage can stop the request:")
     steps = [
-        ["1", "Device check", "The request must come from a browser an admin approved as a scanner (random token in a cookie; only its SHA-256 hash is stored). Otherwise: \"This device is not an approved scanner.\""],
+        ["1", "Device check", "Only if the admin turned on \"Require approved scanner device\" (off by default): the request must come from an approved browser (random token in a cookie; only its SHA-256 hash is stored). Otherwise: \"This device is not an approved scanner.\""],
         ["2", "Face detection", "BlazeFace. No face or more than one face stops here."],
         ["3", "Same-face tracking", "IoU between this frame's face box and the previous frame's. Below 0.25 counts as a different person and resets the session state."],
         ["4", "Crop", "Face box plus 25% margin, resized to 224×224 with ImageNet normalization, byte-identical to the training crop (checked by tests/test_crop_identical.py)."],
         ["5", "Liveness model", "MobileNetV3-Small gives P(spoof) for the frame; the decision uses the average of the last 5 frames for this browser session."],
         ["6", "Three-way decision", "Inside the UNCERTAIN band -> UNCERTAIN (retry); otherwise SPOOF if >= the admin threshold, else LIVE. SPOOF and UNCERTAIN stop here, so recognition never runs on them."],
         ["7", "Recognition", "MediaPipe Face Mesh aligns the face; ArcFace (w600k_r50) gives a 512-number embedding, compared by cosine similarity with the registered students."],
-        ["8", "Natural blink", "The server checks its own Face Mesh eye readings for open -> closed -> open eyes of the same student within 8 s. A blink signal sent by the browser is ignored."],
+        ["8", "Random challenge (second check)", "The scanner shows one random instruction, \"Turn your head left\" or \"Turn your head right\", then \"Now blink once\". The server checks both from its own Face Mesh readings: head yaw (straight first, then turned past 0.12 the asked way) and eyes open -> closed -> open, for the same face, within 15 s. A wrong-way turn or a timeout starts a new random challenge. Nothing the browser sends is trusted."],
         ["9", "Attendance", "Present or Late (admin cut-off time), once per day. Every stage reached is logged with the frame score, the 5-frame average and the IoU."],
     ]
     story.append(table([["#", "Stage", "What happens"]] + steps, [0.7 * cm, 3.2 * cm, W - 3.9 * cm], st))
@@ -146,7 +148,7 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
         ["Model", "Job", "Source"],
         ["BlazeFace (short range)", "Find faces", "Pretrained (Google MediaPipe)"],
         ["MobileNetV3-Small + small head (1 logit)", "Real face or spoof", "Trained for this project (training/)"],
-        ["MediaPipe Face Landmarker (478 points)", "Alignment and eye openness for the blink", "Pretrained (Google MediaPipe)"],
+        ["MediaPipe Face Landmarker (478 points)", "Alignment, head turn and eye openness for the challenge", "Pretrained (Google MediaPipe)"],
         ["ArcFace w600k_r50 (ONNX)", "Identity embedding", "Pretrained (InsightFace buffalo_l)"],
     ], [5.5 * cm, 5 * cm, W - 10.5 * cm], st))
     P("<b>Why a trained model for anti-spoofing.</b> Hand-written rules (texture, screen-edge detection, depth guesses) "
@@ -234,7 +236,8 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
     for item in [
         "CSRF protection on every state-changing request (Flask-WTF).",
         "One login page with a Student/Admin toggle; the account's real role is checked, so a wrong toggle gives \"Invalid credentials\".",
-        "Only admin-approved scanner devices can mark attendance; approvals and removals are audit-logged.",
+        "Optional scanner-device approval (off by default); when on, only approved devices can mark attendance, and approvals and removals are audit-logged.",
+        "The random head-turn + blink challenge is decided only on the server from its own Face Mesh readings; flags or values sent by the browser are ignored.",
         "Face embeddings are stored encrypted (Fernet).",
         "Registration rejects samples that don't match the account's earlier samples or that match another registered person.",
         "Wiping all face data requires typing a confirmation word and is audit-logged with the admin's identity.",
@@ -246,17 +249,21 @@ def create_pdf(filename="SecureFace_Attendance_Report.pdf"):
     P("8. Testing", "h1")
     P("<font face='Courier'>pytest</font> runs the crop-identity regression test plus app tests for login and role access "
       "(including a wrong role toggle), blocking students from admin pages, CSRF, scanner device approval, attendance "
-      "marking and \"Already marked today\", the wipe confirmation, registration owner checks, and Test Mode never marking "
+      "marking and \"Already marked today\", the server-side head-turn + blink challenge (including fake browser flags, wrong-way turns, blinking before the turn, the time limit, and a real photo that is tilted but never counts as a head turn), the wipe confirmation, registration owner checks, and Test Mode never marking "
       "attendance. Tests use a temporary database, never the real one.")
 
     # ---------------- 9. limitations ----------------
     P("9. Known limitations", "h1")
     for item in [
-        "<b>Domain shift.</b> The liveness model was trained on dataset photos. On a real webcam, a real face often lands "
-        "just inside the UNCERTAIN band, and one phone photo was judged LIVE during testing. A data-collection tool and a "
-        "plan to recalibrate (and only if needed fine-tune) are in place; no recalibration has been done yet.",
-        "<b>Silent blink.</b> The scanner waits for a natural blink without a visible prompt. A video of the real person "
-        "would also blink, so the blink is not a defense against video replay; the liveness model is the main defense.",
+        "<b>Domain shift.</b> The liveness model was trained on dataset photos. On this project's laptop webcam it was "
+        "fooled by phone photos: in Test Mode on 2026-11-24, a phone photo was judged LIVE in 61 of 75 frames, and printed "
+        "photos were also mostly judged LIVE, while real faces passed correctly. On the dataset, only 0.15% of attacks passed. "
+        "Fine-tuning on webcam data was not done (the scripts are in training/src).",
+        "<b>Two checks against spoofing.</b> The liveness model is the first check; the random head-turn + blink challenge "
+        "is the second. A flat photo cannot make a real head turn (tilting a photo moved the measured yaw by at most 0.025; "
+        "a turn needs 0.12) and cannot blink. A replayed video passes only if it happens to turn the randomly asked way "
+        "first and then blink within the time limit. Not covered: a 3D mask worn by a live person, or a real-time deepfake "
+        "that follows the instructions.",
         "<b>Postgres.</b> The Postgres code path exists but has never been run against a live database.",
         "<b>Dataset numbers are not webcam numbers.</b> Section 4 describes the CelebA-Spoof test set only.",
     ]:

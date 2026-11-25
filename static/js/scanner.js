@@ -58,7 +58,8 @@
                 else if (state === "UNCERTAIN") setStatus(res.msg, "UNCERTAIN");
                 else if (state === "MULTI_FACE" || state === "MASK") setStatus(res.msg, "WAIT");
                 else if (state === "NO_FACE") setStatus(res.msg || "Step into the frame.", "idle");
-                else if (res.recognized || res.blink_pending) setStatus("Blink once to check in.", "LIVE");
+                // the random challenge comes from the server ("Turn your head left/right", then "Now blink once")
+                else if (res.recognized || res.challenge_pending) setStatus(res.instruction || res.msg, "LIVE");
                 else setStatus(res.msg, "ERROR");          // not recognized / different account / engine error
             }
         } catch {

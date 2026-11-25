@@ -126,19 +126,31 @@ def eye_script(monkeypatch):
     recognize_face_with_liveness() (Face Mesh + ArcFace still run on the real
     image) and only replaces liveness_metrics["eyes_closed"] -- the value the
     server derives from Face Mesh's eye-aspect-ratio -- with the next scripted
-    step. Append ("open"|"closed", recognized: bool) tuples to the returned
-    list; recognized=False makes that frame an unrecognized LIVE frame."""
+    step. Append ("open"|"closed", recognized: bool[, head_yaw]) tuples to the
+    returned list; recognized=False makes that frame an unrecognized LIVE frame.
+    head_yaw (default 0.0 = looking straight) replaces Face Mesh's yaw the same
+    way, for the random head-turn challenge (positive = turned to their left)."""
     real = app_module.recognize_face_with_liveness
     script = []
 
     def scripted(frame, match_threshold=0.40):
         user_id, metrics, confidence, multi_face = real(frame, match_threshold=match_threshold)
         if script:
-            eyes, recognized = script.pop(0)
-            metrics = dict(metrics, eyes_closed=(eyes == "closed"), face_mesh_detected=True)
+            eyes, recognized, *yaw = script.pop(0)
+            metrics = dict(metrics, eyes_closed=(eyes == "closed"), face_mesh_detected=True,
+                           head_yaw=yaw[0] if yaw else 0.0)
             if not recognized:
                 user_id = None
         return user_id, metrics, confidence, multi_face
 
     monkeypatch.setattr(app_module, "recognize_face_with_liveness", scripted)
     return script
+
+
+@pytest.fixture
+def force_turn(monkeypatch):
+    """Fixes the random challenge direction: force_turn("left") / force_turn("right")."""
+    def set_turn(direction):
+        monkeypatch.setattr(app_module, "_pick_turn", lambda: direction)
+    set_turn("left")
+    return set_turn

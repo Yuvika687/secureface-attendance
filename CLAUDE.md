@@ -23,7 +23,7 @@ cp .env.example .env   # SECRET_KEY, FACE_ENCRYPTION_KEY
 ./venv/bin/python app.py                 # http://localhost:5000
 FLASK_DEBUG=1 ./venv/bin/python app.py   # + scanner test-label dropdown, /admin/dev/clear_today_attendance
 
-# Tests: 73; each test uses a fresh temp DB, never database/smartface.db.
+# Tests: 78; each test uses a fresh temp DB, never database/smartface.db.
 # Sample images are read from the sibling anti_spoof_attendance project.
 ./venv/bin/pytest -v                     # pytest.ini limits collection to tests/
 
@@ -64,10 +64,10 @@ inside it (`Config.BASE_DIR` follows the copy).
 3. Same-face tracking by **IoU** of consecutive face boxes; `< SAME_FACE_MIN_IOU` (0.25) → `FACE_MOVED`, session reset.
 4. `crop_face()` (`liveness/face_utils.py`, **must stay byte-identical** to training: 25% margin, 224×224, ImageNet norm; guarded by `tests/test_crop_identical.py`).
 5. MobileNetV3-Small → raw P(spoof); rolling 5-frame average **per Flask session** (never global).
-6. Gray-zone three-way decision (`liveness/weights/gray_zone_v2.json` band + `liveness_threshold` setting). Only SPOOF clears an in-progress blink; UNCERTAIN does not.
+6. Gray-zone three-way decision (`liveness/weights/gray_zone_v2.json` band + `liveness_threshold` setting). Only SPOOF clears an in-progress challenge; UNCERTAIN does not.
 7. Face Mesh + ArcFace **only on LIVE**.
 8. Logged-in student on the scanner → only their own face may proceed.
-9. Silent blink **verified server-side** (`_advance_blink`): open → closed → open from Face Mesh `eyes_closed` for the same user within 8 s. Any browser `liveness_verified` flag is ignored.
+9. **Random challenge, verified server-side** (`_new_challenge` / `_advance_challenge`, second check after the liveness model): a random `_pick_turn()` left/right instruction, then one blink. From Face Mesh: `head_yaw` straight (|yaw| < 0.08) then turned past 0.12 the asked way (positive yaw = the person's own left, on the unmirrored frame), then `eyes_closed` open → closed → open (`_advance_blink`), same user, within `CHALLENGE_TIMEOUT_SECONDS` (15 s). Wrong-way turn or timeout → new random challenge. Nothing from the browser is trusted.
 10. Attendance (Present/Late), once per day. Each stage → `scan_events` with `p_spoof_frame`, `p_spoof_avg`, `iou`.
 
 ### Admin-only tools (none of these mark attendance)

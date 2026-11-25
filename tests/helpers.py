@@ -37,3 +37,13 @@ def approve_scanner(admin_client):
     cookie = admin_client.get_cookie("scanner_device")
     assert cookie is not None
     return cookie.value
+
+
+TURNED = {"left": 0.2, "right": -0.2}   # head_yaw beyond HEAD_TURN_MIN_YAW (0.12) in that direction
+
+
+def challenge_steps(direction="left"):
+    """A full random challenge as eye_script steps: look straight, turn the asked
+    way, then blink (open -> closed -> open). The 5th scan should succeed."""
+    y = TURNED[direction]
+    return [("open", True, 0.0), ("open", True, y), ("open", True, y), ("closed", True, y), ("open", True, y)]
