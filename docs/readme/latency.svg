@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="330" viewBox="0 0 1280 330" role="img" aria-labelledby="t d">
+<title id="t">Measured pipeline latency</title><desc id="d">Median latency over 45 real requests: BlazeFace 3.9 ms, liveness 13.1 ms, recognition 58.0 ms, full round trip 80.6 ms.</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#060a15"/><stop offset="1" stop-color="#0b1224"/></linearGradient>
+<radialGradient id="g1" cx="0.08" cy="0" r="0.6"><stop offset="0" stop-color="#c4b5fd" stop-opacity="0.20"/><stop offset="1" stop-color="#c4b5fd" stop-opacity="0"/></radialGradient>
+<radialGradient id="g2" cx="1" cy="1" r="0.6"><stop offset="0" stop-color="#5eead4" stop-opacity="0.18"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/></radialGradient>
+<linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+<pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#1e293b" stroke-opacity="0.35"/></pattern>
+<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<clipPath id="clip"><rect width="1280" height="330" rx="22"/></clipPath>
+</defs>
+<g clip-path="url(#clip)">
+<rect width="1280" height="330" fill="url(#bg)"/><rect width="1280" height="330" fill="url(#grid)"/>
+<rect width="1280" height="330" fill="url(#g1)"/><rect width="1280" height="330" fill="url(#g2)"/>
+<rect x="0" y="0" width="1280" height="2" fill="url(#acc)" opacity="0.8"><animate attributeName="opacity" values="0.35;0.9;0.35" dur="4s" repeatCount="indefinite"/></rect>
+<text x="48" y="58" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" letter-spacing="3" fill="#c4b5fd">MEASURED, NOT ESTIMATED</text><text x="46" y="98" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="32" font-weight="800" fill="#f8fafc" letter-spacing="-0.5">80.6 ms from frame to decision</text>
+<text x="450" y="163" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0" text-anchor="end" >BlazeFace detection</text>
+<rect x="470" y="150" width="642.0" height="18" rx="9" fill="#111a2e"/>
+<rect x="470" y="150" width="29.5" height="18" rx="9.0" fill="#5eead4" opacity="1"><animate attributeName="width" values="0;0;29.5" keyTimes="0;0.250;1" begin="0s" dur="1.60s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.667;1" dur="1.80s" begin="0s" fill="freeze"/><text x="511.4564705882353" y="164" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="800" fill="#5eead4" text-anchor="start" >3.9 ms</text></g>
+<text x="450" y="203" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0" text-anchor="end" >Liveness (MobileNetV3-Small)</text>
+<rect x="470" y="190" width="642.0" height="18" rx="9" fill="#111a2e"/>
+<rect x="470" y="190" width="98.9" height="18" rx="9.0" fill="#fbbf24" opacity="1"><animate attributeName="width" values="0;0;98.9" keyTimes="0;0.368;1" begin="0s" dur="1.90s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.714;1" dur="2.10s" begin="0s" fill="freeze"/><text x="580.9435294117648" y="204" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="800" fill="#fbbf24" text-anchor="start" >13.1 ms</text></g>
+<text x="450" y="243" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#e2e8f0" text-anchor="end" >Recognition (Face Mesh + ArcFace, LIVE only)</text>
+<rect x="470" y="230" width="642.0" height="18" rx="9" fill="#111a2e"/>
+<rect x="470" y="230" width="438.1" height="18" rx="9.0" fill="#60a5fa" opacity="1"><animate attributeName="width" values="0;0;438.1" keyTimes="0;0.455;1" begin="0s" dur="2.20s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.750;1" dur="2.40s" begin="0s" fill="freeze"/><text x="920.070588235294" y="244" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="800" fill="#60a5fa" text-anchor="start" >58.0 ms</text></g>
+<text x="450" y="283" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="14" font-weight="800" fill="#f8fafc" text-anchor="end" >Full round trip (HTTP + JSON)</text>
+<rect x="470" y="270" width="642.0" height="18" rx="9" fill="#111a2e"/>
+<rect x="470" y="270" width="608.8" height="18" rx="9.0" fill="#c4b5fd" opacity="1"><animate attributeName="width" values="0;0;608.8" keyTimes="0;0.520;1" begin="0s" dur="2.50s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.8 0.2 1"/></rect>
+<g><animate attributeName="opacity" values="0;0;1" keyTimes="0;0.778;1" dur="2.70s" begin="0s" fill="freeze"/><text x="1090.7670588235294" y="284" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="800" fill="#c4b5fd" text-anchor="start" >80.6 ms</text></g>
+<line x1="470" y1="140" x2="470" y2="310" stroke="#f8fafc" stroke-opacity="0.5" stroke-width="2"><animate attributeName="x1" values="470;1078.8;470" dur="5s" repeatCount="indefinite"/><animate attributeName="x2" values="470;1078.8;470" dur="5s" repeatCount="indefinite"/></line>
+<text x="48" y="314" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#94a3b8" text-anchor="start" >Medians over 45 real requests to the running app (docs/pipeline_latency_2026-11-07.txt). Stage medians are not additive.</text>
+</g>
+<rect x="0.5" y="0.5" width="1279" height="329" rx="22" fill="none" stroke="#1e293b"/>
+</svg>
